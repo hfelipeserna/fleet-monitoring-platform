@@ -1,0 +1,39 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "hfserna",
+  "default_agent": "architect",
+  "instructions": ["AGENTS.md"],
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": false
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "task": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "bash": {
+      "*": "allow",
+      "git add -A *": "ask",
+      "git commit *": "ask",
+      "git push *": "ask",
+      "git reset --hard *": "deny",
+      "git clean *": "deny",
+      "rm -rf *": "deny",
+      "docker compose down -v *": "ask",
+      "docker system prune *": "ask",
+      "terraform destroy *": "ask"
+    },
+    "external_directory": {
+      "*": "allow"
+    }
+  }
+}

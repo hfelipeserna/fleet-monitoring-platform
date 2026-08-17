@@ -1,0 +1,46 @@
+# Go
+backend/bin/
+backend/coverage.out
+*.test
+
+# Node / web
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Expo / React Native
+mobile/.expo/
+mobile/ios/
+mobile/android/
+mobile/eas.json.local
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# Entornos y secretos
+.env
+.env.*.local
+.env.local
+!.env.example
+
+# k6
+tests/load/out/
+*.hdr
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# SO
+.DS_Store
+
+# Artefactos de ejecución local
+tmp/
+logs/
