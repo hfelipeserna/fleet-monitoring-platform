@@ -4,7 +4,7 @@ Instrucciones globales para TODOS los agentes de este repositorio. Léelas antes
 
 ## Propósito
 
-MVP funcional (prueba técnica) de un Portal Corporativo de monitoreo de flotas:
+MVP funcional (prueba técnica) de un Portal Corporativo de monitoreo de flotas. El enunciado canónico de requerimientos vive en **`docs/PRUEBA-TECNICA.md`**: consúltalo antes de crear cualquier SPEC y deriva de ahí los criterios de aceptación.
 
 - Ingesta orientada a eventos de alta concurrencia (Go + **NATS JetStream**).
 - Persistencia de series de tiempo (**TimescaleDB**) para miles de dispositivos.
