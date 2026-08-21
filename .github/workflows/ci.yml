@@ -1,0 +1,161 @@
+# CI del monorepo (ADR-0002): un job por componente, dormido hasta que el
+# directorio exista (hashFiles guards) y activo en cuanto se cree.
+# Enforcement de capas/BCs: backend/.golangci.yml (depguard, ADR-0002 cond.1).
+# Sin secretos literales: GEMINI_API_KEY solo se usa en runtime del agent.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (vet + test + depguard + govulncheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: gate (dormant hasta que exista backend/go.mod)
+        run: |
+          if [ ! -f go.mod ]; then
+            echo 'backend/ sin implementación todavía — stub pasivo'
+          fi
+
+      - uses: actions/setup-go@v5
+        if: hashFiles('backend/go.mod') != ''
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+
+      - name: go vet
+        if: hashFiles('backend/go.mod') != ''
+        run: go vet ./...
+
+      - name: go test
+        if: hashFiles('backend/go.mod') != ''
+        run: go test ./... -race
+
+      - name: golangci-lint — capas + BCs aislados (ADR-0002 cond.1)
+        if: hashFiles('backend/go.mod') != ''
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
+          working-directory: backend
+          args: run ./...
+
+      - name: govulncheck — CVEs en dependencias Go
+        if: hashFiles('backend/go.mod') != ''
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: backend/go.mod
+          work-dir: backend
+
+  terraform:
+    name: terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        if: hashFiles('infra/terraform/**/*.tf') != ''
+        with:
+          terraform_version: '1.15.8'
+
+      - name: fmt -check
+        if: hashFiles('infra/terraform/**/*.tf') != ''
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: validate (root)
+        if: hashFiles('infra/terraform/main.tf') != ''
+        working-directory: infra/terraform
+        run: terraform init -backend=false && terraform validate
+
+      - name: validate (envs/prod)
+        if: hashFiles('infra/terraform/envs/prod/main.tf') != ''
+        working-directory: infra/terraform/envs/prod
+        run: terraform init -backend=false && terraform validate
+
+  compose:
+    name: docker compose (config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: compose config
+        if: hashFiles('docker-compose.yml') != ''
+        run: docker compose config --quiet
+
+  web:
+    name: web (build + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: hashFiles('web/package.json') != ''
+        with:
+          node-version: '22'
+      - name: build + lint
+        if: hashFiles('web/package.json') != ''
+        run: |
+          set -euo pipefail
+          npm ci --prefix web
+          npm run lint --prefix web
+          npm run build --prefix web
+
+  mobile:
+    name: mobile (typecheck + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: hashFiles('mobile/package.json') != ''
+        with:
+          node-version: '22'
+      - name: typecheck + lint
+        if: hashFiles('mobile/package.json') != ''
+        run: |
+          set -euo pipefail
+          npm ci --prefix mobile
+          npx --prefix mobile tsc --noEmit
+          npx --prefix mobile expo lint
+
+  load-tests:
+    name: k6 scripts (syntax check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: valida sintaxis de los scripts k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=()
+          for dir in infra/k6 tests/load; do
+            if [ -d "$dir" ]; then
+              while IFS= read -r f; do files+=("$f"); done < <(find "$dir" -name '*.js' -type f)
+            fi
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo 'sin scripts k6 todavía — stub pasivo'
+            exit 0
+          fi
+          fail=0
+          for f in "${files[@]}"; do
+            echo "checking $f"
+            node --check "$f" || fail=1
+          done
+          exit $fail

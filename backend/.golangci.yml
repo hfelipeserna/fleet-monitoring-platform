@@ -1,0 +1,101 @@
+# golangci-lint v2 — enforcement del módulo único (ADR-0002 cond.1).
+# Reglas prohibidas; la regla natural del código es el allowlist por capa.
+# Condición de merge a partir de 3 BCs (hoy ya son 3: telemetry, fleet, assistant).
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        # ── kernel: domain + application = solo stdlib (ni adapters ni terceros) ──
+        kernel-domain:
+          files:
+            - "**/internal/telemetry/domain/**"
+            - "**/internal/telemetry/application/**"
+            - "**/internal/fleet/domain/**"
+            - "**/internal/fleet/application/**"
+            - "**/internal/assistant/domain/**"
+            - "**/internal/assistant/application/**"
+          deny:
+            - pkg: "github.com/**"
+              desc: "domain/application son stdlib-only (ADR-0002 cond.1)"
+            - pkg: "golang.org/**"
+              desc: "domain/application son stdlib-only (ADR-0002 cond.1)"
+            - pkg: "google.golang.org/**"
+              desc: "domain/application son stdlib-only (ADR-0002 cond.1)"
+            - pkg: "go.opentelemetry.io/**"
+              desc: "domain/application son stdlib-only (ADR-0002 cond.1)"
+            - pkg: "fleetmonitoring/backend/internal/*/adapters/**"
+              desc: "dependencias hacia adentro: el kernel no importa adapters (AGENTS.md)"
+            - pkg: "fleetmonitoring/backend/internal/*/infra/**"
+              desc: "dependencias hacia adentro: el kernel no importa infra (AGENTS.md)"
+
+        # ── shared/domain = value objects puros ────────────────────────────────────
+        shared-kernel:
+          files: ["**/internal/shared/**"]
+          deny:
+            - pkg: "github.com/**"
+              desc: "shared/domain es kernel puro (ADR-0002 cond.2)"
+            - pkg: "golang.org/**"
+              desc: "shared/domain es kernel puro (ADR-0002 cond.2)"
+            - pkg: "fleetmonitoring/backend/internal/*/adapters/**"
+              desc: "shared/domain no importa adapters"
+            - pkg: "fleetmonitoring/backend/internal/*/infra/**"
+              desc: "shared/domain no importa infra"
+
+        # ── BCs aislados: se comunican por ports/eventos, nunca por imports ────────
+        telemetry-bc:
+          files: ["**/internal/telemetry/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/fleet/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/assistant/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+        fleet-bc:
+          files: ["**/internal/fleet/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/telemetry/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/assistant/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+        assistant-bc:
+          files: ["**/internal/assistant/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/telemetry/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/fleet/**"
+              desc: "BCs incomunicados por imports (ADR-0002)"
+
+        # ── cmd/<bin> = composition root: solo su BC + shared/domain ───────────────
+        cmd-ingest:
+          files: ["**/cmd/ingest/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/fleet/**"
+              desc: "cmd/ingest solo telemetry + shared (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/assistant/**"
+              desc: "cmd/ingest solo telemetry + shared (ADR-0002)"
+        cmd-consumer:
+          files: ["**/cmd/consumer/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/fleet/**"
+              desc: "cmd/consumer solo telemetry + shared (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/assistant/**"
+              desc: "cmd/consumer solo telemetry + shared (ADR-0002)"
+        cmd-api:
+          files: ["**/cmd/api/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/telemetry/**"
+              desc: "cmd/api solo fleet + shared (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/assistant/**"
+              desc: "cmd/api solo fleet + shared (ADR-0002)"
+        cmd-agent:
+          files: ["**/cmd/agent/**"]
+          deny:
+            - pkg: "fleetmonitoring/backend/internal/telemetry/**"
+              desc: "cmd/agent solo assistant + shared (ADR-0002)"
+            - pkg: "fleetmonitoring/backend/internal/fleet/**"
+              desc: "cmd/agent solo assistant + shared (ADR-0002)"
