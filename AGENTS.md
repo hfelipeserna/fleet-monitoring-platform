@@ -33,18 +33,31 @@ MVP funcional (prueba técnica) de un Portal Corporativo de monitoreo de flotas:
 1. Cubre los 4 cuadrantes de la prueba: ingestión, IA, web, móvil, infra, testing.
 2. Compila sin errores y pasa `go vet` / lint / tests del módulo tocado.
 3. `docker compose config` es válido cuando toca infra.
-4. El agente `reviewer` hizo auditoría de clean architecture + seguridad y **no quedaron hallazgos de severidad alta**. Cuando una decisión se candidatea a ADR o el código toca seguridad, pasan además el dictamen de `scalability` (¿escala a miles de dispositivos?) y/o `security`.
-5. Toda decisión o refactor relevante quedó registrado en `docs/IAUDIT.md` (auditoría de IA) y/o en un ADR en `docs/adr/`.
-6. Commit con mensaje en **Conventional Commits** (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`) y relacionado a una tarea del backlog.
-7. Se actualizó el `README.md` (instrucciones de ejecución) si cambió la DX.
+4. El agente `reviewer` hizo auditoría de clean architecture + seguridad y **no quedaron hallazgos de severidad alta**. Cuando una decisión se candidatea a ADR o el código toca seguridad, pasan además el dictamen de `scalability` (¿escala a miles de dispositivos?) y/o `security`. Si el task toca queries/schemas/migraciones, pasó `db-auditor`; si es refactor o lógica caliente, pasó `quality-auditor`.
+5. Los criterios de aceptación del SPEC-ID asociado tienen tests verdes que los citan.
+6. Toda decisión o refactor relevante quedó registrado en `docs/IAUDIT.md` (auditoría de IA) y/o en un ADR en `docs/adr/`.
+7. Commit con mensaje en **Conventional Commits** (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `ci:`) y relacionado a una tarea del backlog.
+8. Se actualizó el `README.md` (instrucciones de ejecución) si cambió la DX.
+
+## Spec-Driven Development (SDD)
+
+Las features siguen el ciclo: `/specify` → spec aprobado por el usuario → `/plan` → `/tasks` → implementación → auditorías → cierre del SPEC-ID.
+
+- Los specs viven en `docs/specs/SPEC-XXX-<slug>/` siguiendo la skill `spec-authoring`.
+- Ningún especialista implementa sin un spec en estado `approved`; ningún task cierra si sus criterios de aceptación (`AC-SPEC-XXX-N`) no tienen test que los cubra.
+- Contratos machine-readable primero: OpenAPI para HTTP/SSE, AsyncAPI para eventos NATS.
+- Trazabilidad obligatoria: tareas y commits citan su SPEC-ID.
 
 ## Workflow estándar del equipo de agentes
 
 - **`architect`** (agente primario por defecto): descompone el problema, delega a especialistas y evalúa resultados. NO escribe código de features; escudriña y refactoriza lo generado.
 - **Especialistas (subagentes)**: `go-backend`, `data-events`, `ai-agent`, `react-web`, `mobile-expo`, `devops`.
+- **`test-engineer`** (subagente): construye tests unitarios/de integración con patrón AAA (Arrange-Act-Assert), suites organizadas por comportamiento y trazabilidad a los ACs del spec. No toca código de producción.
 - **`security`** (subagente): auditoría dedicada de seguridad (secretos, inyecciones, authN/authZ, exposición de GPS/PII, hardening IaC/móvil) en lo que expone la flota.
 - **`scalability`** (subagente): dictamina con números si una decisión escala a miles de dispositivos (particionado, backpressure, storage, resiliencia); obligatoria antes de un ADR.
 - **`reviewer`**: auditor estricto (clean architecture, seguridad, resiliencia). Corre antes de dar por hecho un task.
+- **`db-auditor`** (subagente): auditoría de base de datos (paginación keyset vs offset, slow queries, índices, inyección SQL, batch inserts, hypertables/compresión). Obligatorio cuando el task toca queries, schemas o migraciones.
+- **`quality-auditor`** (subagente): auditoría de calidad y performance interna (complejidad O-notation en hot paths, SOLID, patrones de diseño aplicados con criterio, clean code idiomático). Obligatorio en refactors y lógica caliente.
 - Regla de oro: **la IA es el exoesqueleto, no la muleta**. Todo código generado pasa por auditoría del `architect`/`reviewer`; los hallazgos y el refactor se documentan en `docs/IAUDIT.md` con al menos 2 ejemplos donde el enfoque sugerido era deficiente/inseguro/no escalable y se forzó el estándar.
 
 ## Herramientas y límites
