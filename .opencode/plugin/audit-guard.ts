@@ -2,18 +2,25 @@ import { mkdirSync, appendFileSync, readFileSync, readdirSync, statSync, existsS
 import { join, resolve, sep } from "node:path"
 import type { Plugin } from "@opencode-ai/plugin"
 
-const SECRET_PATTERNS: RegExp[] = [
+const HARD_SECRET_PATTERNS: RegExp[] = [
   /AKIA[0-9A-Z]{16}/,
-  /(client_secret|api_key|apikey|password|passwd)[\"']?\s*[:=]\s*[\"'][^\"']{16,}/i,
   /-----BEGIN( RSA| EC| OPENSSH| PGP)? PRIVATE KEY-----/,
 ]
 
-const ALLOWED_SUFFIXES = [".example", ".md", "compose", "opencode.json"]
+const SOFT_SECRET_PATTERNS: RegExp[] = [
+  /(client_secret|api_key|apikey|password|passwd)["']?\s*[:=]\s*["'][^"']{16,}/i,
+]
+
+const ALLOWED_SUFFIXES = [".example", ".md", ".opencode.json", ".tfvars.example"]
 
 const toolNameOf = (input: any, output: any) => output?.toolName ?? input?.tool ?? (input as any)?.toolName
 
 function isAllowedSecretPath(filePath: string): boolean {
-  return ALLOWED_SUFFIXES.some((s) => filePath.includes(s))
+  return ALLOWED_SUFFIXES.some((s) => filePath.endsWith(s))
+}
+
+function secretGuardMode(): "strict" | "warn" {
+  return process.env.FMP_SECRET_GUARD === "strict" ? "strict" : "warn"
 }
 
 function entryForEditLog(filePath: string, ts: string): string {
@@ -44,21 +51,30 @@ function auditArchitecture(root: string): string {
   if (!module) return `go.mod sin 'module' en ${root}.`
 
   const forbidden: Record<string, string[]> = {
-    domain: ["/internal/application/", "/internal/adapters/", "/internal/infra/"],
-    application: ["/internal/adapters/", "/internal/infra/"],
+    domain: ["/application/", "/adapters/", "/infra/"],
+    application: ["/adapters/", "/infra/"],
   }
 
   const files = collectGoFiles(base)
   if (files.length === 0) return `Sin archivos .go en ${root}.`
 
   const violations: string[] = []
+  const layerOf = (rel: string): string | undefined => {
+    for (const layer of Object.keys(forbidden)) {
+      if (rel.includes(`/${layer}/`)) return layer
+    }
+    return undefined
+  }
   for (const file of files) {
-    const rel = resolve(file).replace(base, sep).split(sep).filter(Boolean)
-    const layer = rel[0]
-    const deny = forbidden[layer]
+    const rel = resolve(file).replace(base, sep)
+    const layer = layerOf(rel)
+    const deny = layer ? forbidden[layer] : undefined
     if (!deny) continue
     const src = readFileSync(file, "utf8")
-    for (const m of src.matchAll(/^\s*"([^"]+)"/gm)) {
+    const singleImport = /^\s*import\s+"([^"]+)"/gm
+    const blockImport = /^\s*"([^"]+)"/gm
+    const allImports = [...src.matchAll(singleImport), ...src.matchAll(blockImport)]
+    for (const m of allImports) {
       const imp = m[1]
       if (!imp.startsWith(module)) continue
       if (deny.some((seg) => imp.includes(seg))) {
@@ -97,9 +113,19 @@ export default (async () => {
         const filePath: string = output?.args?.filePath ?? ""
         const content: string = output?.args?.content ?? output?.args?.newString ?? ""
         if (!content || isAllowedSecretPath(filePath)) return
-        const hit = SECRET_PATTERNS.find((re) => re.test(String(content)))
-        if (hit) {
-          const msg = `[guard] posible secreto en ${filePath} (${hit}). NO lo commitees.`
+        const mode = secretGuardMode()
+        const hard = HARD_SECRET_PATTERNS.find((re) => re.test(String(content)))
+        if (hard) {
+          const msg = `[guard] posible secreto inequívoco en ${filePath} (${hard}). NO lo commitees.`
+          if (mode === "strict" || process.env.FMP_SECRET_GUARD === "strict") {
+            throw new Error(msg)
+          }
+          console.error(msg)
+          return
+        }
+        const soft = SOFT_SECRET_PATTERNS.find((re) => re.test(String(content)))
+        if (soft) {
+          const msg = `[guard] posible secreto en ${filePath} (${soft}). NO lo commitees.`
           if (process.env.FMP_SECRET_GUARD === "strict") {
             throw new Error(msg)
           }
