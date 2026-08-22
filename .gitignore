@@ -42,3 +42,9 @@ tests/load/out/
 # Artefactos de ejecución local
 tmp/
 logs/
+
+# Structurizr local (runtime, regenerable desde workspace.dsl)
+docs/c4/.structurizr/
+docs/c4/structurizr-*.png
+docs/c4/plantuml/
+docs/c4/mermaid/

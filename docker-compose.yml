@@ -1,0 +1,16 @@
+name: fleet-monitoring-platform
+
+# MVP local - ver AGENTS.md y ADR-0002
+# Stack: NATS JetStream + TimescaleDB + Go bins (ingest/consumer/api/agent) + Structurizr Lite
+# Footprint 16GB: todos los servicios < 4GB en reposo; Structurizr Lite ~200MB solo para docs
+
+services:
+  structurizr:
+    image: structurizr/structurizr:latest
+    command: local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docs/c4:/usr/local/structurizr
+    restart: unless-stopped
+    profiles: ["docs"]
