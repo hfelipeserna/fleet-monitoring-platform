@@ -2,6 +2,7 @@
 
 - **Fecha:** 2026-08-21
 - **Estado:** Aceptado (con condiciones; dictamen de `security` incorporado)
+- **Enmienda 2026-08-22:** validación de costo — el MVP corre en free tier de la Gemini API (costo $0); ver condición 7
 - **Decisores:** `architect` + dictamen de `security` (obligatorio según AGENTS.md: el componente expone un endpoint de chat con acceso a datos de flota)
 
 ## Contexto
@@ -37,7 +38,7 @@ Requisitos del framework: soporte Go nativo y maduro, abstracción de flows (pip
 4. **Límites de minimización de datos en tool layer**: máximo N vehículos por respuesta, campos mínimos (sin PII de conductor), precisión de posición limitada (~3 decimales), preferencia por agregados sobre listas crudas cuando la pregunta lo permita.
 5. **Endpoint de chat**: authN JWT obligatoria, rate limit por usuario/IP (~10 req/min), límite de tamaño de input (~4 KB), timeout duro del flow (~15 s) con ctx propagado a tools/pgx, `maxInputTokens`/`maxOutputTokens` fijos (~1024 out), gobreaker sobre la llamada al LLM, semáforo global de concurrencia.
 6. **Observabilidad**: Dev UI de Genkit prohibida fuera de desarrollo local y jamás expuesta por Compose; en producción traces sin contenido de prompts/outputs (solo metadatos); logs del endpoint sin contenido de chat ni PII.
-7. **Costo**: presupuesto/alerta de gasto en la API key + restricciones de API; migración a Vertex AI + service account/IAM anotada como condición previa a producción real (la AI Studio key es secreto plano sin IAM fino — aceptable solo en MVP).
+7. **Costo cero para el MVP**: el agente opera exclusivamente dentro del free tier de la Gemini API. Modelos clase Flash únicamente (`gemini-2.5-flash` por defecto, seleccionable vía env var `GEMINI_MODEL` sin tocar código; a ago-2026 los modelos Pro no tienen capa gratuita). La key se crea en AI Studio sin tarjeta de crédito y debe quedar restringida al endpoint de Generative Language (obligatorio por política de Google desde jun-2026; las keys nuevas de AI Studio ya nacen restringidas). Presupuesto/alerta de gasto en la API key como red de seguridad ante exceder el free tier (límites ~10 RPM y cap diario según modelo/proyecto — coherente con el rate limit del endpoint de chat, cond. 5); migración a Vertex AI + service account/IAM anotada como condición previa a producción real (la AI Studio key es secreto plano sin IAM fino — aceptable solo en MVP).
 8. **Re-auditoría `security` sobre la implementación concreta** del BC `assistant` antes de cerrar su SPEC: este dictamen cubre la decisión, no el código.
 
 ## Consecuencias
