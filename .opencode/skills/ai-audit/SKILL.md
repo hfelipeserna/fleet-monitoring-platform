@@ -47,6 +47,16 @@ Usar NATS JetStream (streams durables + replay + dedup) sobre Kafka/RabbitMQ.
 
 - Cualquier "NO revertir sin ADR" de AGENTS.md debe tener su ADR.
 
+## Regla de trazabilidad unidireccional (obligatoria)
+
+- `docs/IAUDIT.md` es una **bitácora**: cita sus fuentes (ADRs, commits, archivo:línea), nunca al revés.
+- **Prohibido** que documentos arquitectónicos (ADRs, C4, specs, código) referencien o dependan de `IAUDIT.md`. Un ADR debe ser autosuficiente: su validez no depende de entradas de auditoría que pueden archivarse o rotarse.
+- Únicas referencias entrantes válidas a IAUDIT:
+  - `README.md` (requisito explícito del entregable de la prueba).
+  - `AGENTS.md` (contrato de proceso que define dónde se registra).
+  - El árbol de layout en ADR-0002 (solo como inventario de archivos, sin dependencia).
+- Al escribir o auditar cualquier doc: si aparece una mención nueva a IAUDIT fuera de esas excepciones, reescríbela para que apunte a las fuentes originales (commit, ADR, evidencia) en vez del log.
+
 ## Relación con el README
 
 - El README debe linkear a `docs/IAUDIT.md` y `docs/adr/`. La sección "auditoría de IA" del README resume los 2+ hallazgos y cómo se forzó el estándar (con links a las entradas).

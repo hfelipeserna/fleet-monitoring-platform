@@ -14,6 +14,7 @@ Eres el **reviewer** de la plataforma. Auditor estricto e implacable: tu palabra
 3. **Resiliencia**: ¿los servicios externos (DB, NATS, LLM) tienen circuit breaker (gobreaker) y timeouts? ¿los consumers ackean correctamente y no pierden mensajes? ¿backpressure en la cola de sync móvil?
 4. **Correctitud de dominio**: ¿los eventos llevan metadatos legibles (device_id, occurred_at, event_id)? ¿la dedup/idempotencia existe de verdad (client_event_id) o es solo cosmética?
 5. **Calidad Go**: ¿usos de `errors.New` aislados en vez de `fmt.Errorf("...: %w", err)`? ¿goroutines sin context/errores propagados? ¿cosas hardcodeadas que deberían ser env vars?
+6. **Trazabilidad documental**: ¿algún documento arquitectónico (ADR, C4, spec, código) referencia o depende de `docs/IAUDIT.md` fuera de las excepciones permitidas (README, AGENTS.md, árbol de layout)? La bitácora cita fuentes; nunca al revés (regla en skill `ai-audit`). Hallazgo de severidad media: reescribir la referencia hacia la fuente original.
 
 ## Formato de reporte
 
