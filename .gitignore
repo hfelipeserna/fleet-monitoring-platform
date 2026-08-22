@@ -24,9 +24,7 @@ mobile/eas.json.local
 *.tfvars
 
 # Entornos y secretos
-.env
-.env.*.local
-.env.local
+.env*
 !.env.example
 
 # k6
