@@ -28,3 +28,7 @@ nuevo conforme avance cada SPEC.)_
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
+- **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
+  commits, archivo:línea); ningún documento arquitectónico (ADR, C4, specs)
+  debe depender de o referenciar a IAUDIT. Únicas referencias entrantes válidas:
+  `README.md` (requisito del entregable) y `AGENTS.md` (contrato de proceso).

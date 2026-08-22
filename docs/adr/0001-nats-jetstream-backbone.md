@@ -57,5 +57,4 @@ NATS **JetStream** como único backbone de eventos, con streams durables y sujet
 
 ## Referencias
 
-- Dictamen `scalability` 2026-08-17 (APROBADO CON CONDICIONES): benchmarks natsbench oficiales (core pub 14,8 M msg/s; JS sync 35,7k @ 28 µs; JS async file 403,8k), benchmark Go oficial nats-server PR #3425 (sync R1 file 32,5 µs; async W=1000 3,5 µs; R3 1 KB 22,7 µs), issue #5637 (contención same-node, filtrado por subject sin barrido lineal desde 2.8), docs de durabilidad JetStream (`sync_interval` 2 min, pérdida R1).
-- Registrado en `docs/IAUDIT.md` (entrada A1 de la iteración previa archivada en la rama `backup/pre-reset-harness`; se re-registrará contra el código nuevo al implementar el SPEC-001).
+- Benchmarks natsbench oficiales (core pub 14,8 M msg/s; JS sync 35,7k @ 28 µs; JS async file 403,8k), benchmark Go oficial nats-server PR #3425 (sync R1 file 32,5 µs; async W=1000 3,5 µs; R3 1 KB 22,7 µs), issue #5637 (contención same-node, filtrado por subject sin barrido lineal desde 2.8), docs de durabilidad JetStream (`sync_interval` 2 min, pérdida R1).
