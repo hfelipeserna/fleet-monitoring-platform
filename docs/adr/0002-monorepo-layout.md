@@ -93,5 +93,4 @@ Reglas de dependencia: `domain` → solo stdlib + `shared/domain`; `application`
 
 - Dictamen `scalability` 2026-08-17 (ADOPTAR CON CONDICIONES): estimaciones de build cold backend 3-6 min, pipeline full 13-20 min, mediana PR 4-8 min con path-filters; footprint dev vivo 6-9 GB; umbrales numéricos de quiebre y split (secciones 1-6 del dictamen).
 - ADR-0001 (NATS JetStream backbone) — del que este ADR depende estructuralmente.
-- H2 en `docs/IAUDIT.md` — controles P0 de seguridad que este layout materializa (`.env.example` raíz, `.gitignore`, guard en CI).
-- Registrado en `docs/IAUDIT.md` (A2 — validación de `scalability` previa a ADR).
+- Controles P0 de seguridad materializados por este layout: `.env.example` raíz, `.gitignore` con exclusión de secretos, secret-guard del plugin y guard en CI. (El registro de auditoría de IA correspondiente vive en `docs/IAUDIT.md`, que cita a este ADR — la trazabilidad es unidireccional hacia las fuentes.)
