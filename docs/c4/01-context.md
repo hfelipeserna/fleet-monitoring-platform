@@ -1,6 +1,6 @@
 # C4 Nivel 1 — Contexto
 
-> Fuente canónica: `docs/PRUEBA-TECNICA.md` §4.A-D + ADR-0001 (NATS JetStream) + ADR-0003 (Genkit/Gemini) + ADR-0002/0005 (monolito modular).
+> Fuente canónica: `docs/PRUEBA-TECNICA.md` sec. 4.A-D + ADR-0001 (NATS JetStream) + ADR-0003 (Genkit/Gemini) + ADR-0002/0005 (monolito modular).
 
 ## Diagrama
 
@@ -48,18 +48,18 @@ graph LR
 
 | Elemento | Tipo C4 | Origen | Descripción |
 |---|---|---|---|
-| **Operador de Flota** | Person | `PRUEBA-TECNICA.md §4.C` | Back-office que usa el Portal (SPA React + SSE + mapa + chat IA). |
-| **Conductor** | Person | `§4.D` | Usuario de campo que envía telemetría GPS desde la app Expo offline-first (SQLite/WatermelonDB, sync batch). |
+| **Operador de Flota** | Person | `PRUEBA-TECNICA.md sec. 4.C` | Back-office que usa el Portal (SPA React + SSE + mapa + chat IA). |
+| **Conductor** | Person | `sec. 4.D` | Usuario de campo que envía telemetría GPS desde la app Expo offline-first (SQLite/WatermelonDB, sync batch). |
 | **Fleet monitoring platform** | Software System | Sistema en scope | Capta ingesta event-driven, persiste en TimescaleDB y expone dashboard + IA. Internamente son 4 bins Go (`ingest/consumer/api/agent`) + NATS JetStream — detalle Nivel 2. |
-| **Gemini API** | Software System (External) | `§4.B` + `ADR-0003` | IA generativa externa invocada vía Genkit (`genkit-go`) con `GEMINI_API_KEY`. Free tier Flash; tools read-only con scope por JWT. |
+| **Gemini API** | Software System (External) | `sec. 4.B` + `ADR-0003` | IA generativa externa invocada vía Genkit (`genkit-go`) con `GEMINI_API_KEY`. Free tier Flash; tools read-only con scope por JWT. |
 
 ## Relaciones (C4)
 
 | Origen -> Destino | Label | Protocolo | ADR / Spec |
 |---|---|---|---|
 | `Conductor -> Fleet platform` | `Envía telemetría GPS` | `POST /v1/telemetry/batch` (100-500 events, 1 MB max) + jitter 0-60s | ADR-0001 cond. 3-4, ADR-0006 |
-| `Operador -> Fleet platform` | `Consulta dashboard y chat con IA` | `HTTPS` `POST /api/chat`, `GET /api/*` | §4.C, ADR-0003 cond. 9 (BFF `cmd/api`) |
-| `Fleet platform -> Operador` | `Alertas y datos en tiempo real` | `SSE /api/alerts` (push) | §4.C |
+| `Operador -> Fleet platform` | `Consulta dashboard y chat con IA` | `HTTPS` `POST /api/chat`, `GET /api/*` | sec. 4.C, ADR-0003 cond. 9 (BFF `cmd/api`) |
+| `Fleet platform -> Operador` | `Alertas y datos en tiempo real` | `SSE /api/alerts` (push) | sec. 4.C |
 | `Fleet platform -> Gemini API` | `Consultas NL` | `HTTPS` via Genkit flows + gobreaker + timeout 15s | ADR-0003 cond. 2,5 |
 
 ## Qué NO va en Nivel 1 (y por qué)

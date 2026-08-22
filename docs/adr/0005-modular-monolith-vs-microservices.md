@@ -6,7 +6,7 @@
 
 ## Contexto
 
-El enunciado canónico pide literalmente: *"Resiliencia: Implementar Circuit Breakers en la comunicación entre microservicios"* (`docs/PRUEBA-TECNICA.md`, §4.A). Las decisiones ya aceptadas fijan: NATS JetStream como backbone (ADR-0001), un monorepo con **un solo módulo Go** desplegado como **4 bins** (`cmd/ingest`, `cmd/consumer`, `cmd/api`, `cmd/agent`; ADR-0002) y Genkit+Gemini para el agente (ADR-0003, que ya exige gobreaker sobre la llamada al LLM).
+El enunciado canónico pide literalmente: *"Resiliencia: Implementar Circuit Breakers en la comunicación entre microservicios"* (`docs/PRUEBA-TECNICA.md`, sec. 4.A). Las decisiones ya aceptadas fijan: NATS JetStream como backbone (ADR-0001), un monorepo con **un solo módulo Go** desplegado como **4 bins** (`cmd/ingest`, `cmd/consumer`, `cmd/api`, `cmd/agent`; ADR-0002) y Genkit+Gemini para el agente (ADR-0003, que ya exige gobreaker sobre la llamada al LLM).
 
 Falta explicitar tres cosas: (1) por qué ese diseño **no son microservicios clásicos**, (2) qué se pierde al no adoptarlos y cuánto importa aquí, y (3) **dónde viven legítimamente los circuit breakers cuando no existe comunicación RPC entre servicios**. Esta decisión desvía el literal del enunciado ("microservicios") manteniendo íntegro su requisito de fondo (resiliencia ante fallos parciales), y esa desviación debe quedar justificada y trazable.
 
@@ -33,7 +33,7 @@ Restricción dura: máquina dev macOS Intel con 16 GB RAM; orquestación local D
 
 | Bin | Breaker (sony/gobreaker) | Comportamiento al abrirse |
 |---|---|---|
-| `ingest` | Publish a JetStream | Responder 503 + Retry-After; el móvil retiene el batch offline (su modo natural según el enunciado §4.D) |
+| `ingest` | Publish a JetStream | Responder 503 + Retry-After; el móvil retiene el batch offline (su modo natural según el enunciado sec. 4.D) |
 | `consumer` | Persistencia a TimescaleDB | Nak/redeliver con backoff acotado (MaxDeliver=3 → DLQ `telemetry.dlq`, ADR-0001 cond. 2); el backlog queda retenido en el stream |
 | `api` | Queries de lectura (pool pgx) | Degradar SSE a último-valor-conocido/stale o 503 parcial; jamás bloquear goroutines del SSE esperando a la DB |
 | `agent` | Llamada a Gemini/Vertex | Ya exigido por ADR-0003 cond. 5: respuesta inmediata de agente temporalmente no disponible; nunca esperar a un LLM colgado |
@@ -76,5 +76,5 @@ Restricción dura: máquina dev macOS Intel con 16 GB RAM; orquestación local D
 
 - Dictámenes previos de `scalability` incorporados: ADR-0001 (condiciones 1, 2, 3, 7; sección de consecuencias) y ADR-0002 (condiciones 1, 7). Intento de dictamen dedicado 2026-08-22: subagente sin respuesta útil (×3); pendiente de refrendo (condición 8).
 - ADR-0001 (JetStream backbone), ADR-0002 (módulo único + 4 bins), ADR-0003 (cond. 5: gobreaker sobre la llamada al LLM).
-- `docs/PRUEBA-TECNICA.md` §4.A (resiliencia) y §4.D (offline-first batch sync).
+- `docs/PRUEBA-TECNICA.md` sec. 4.A (resiliencia) y sec. 4.D (offline-first batch sync).
 - Stack decidido en AGENTS.md: `sony/gobreaker` para circuit breakers.

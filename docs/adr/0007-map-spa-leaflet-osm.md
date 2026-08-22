@@ -6,9 +6,9 @@
 
 ## Contexto
 
-`docs/PRUEBA-TECNICA.md` §4.C exige *"Dashboard Reactivo: SPA que consuma los datos procesados mediante WebSockets o SSE. Mostrar mapa, alertas en tiempo real y chat con la IA"*.
+`docs/PRUEBA-TECNICA.md` sec. 4.C exige *"Dashboard Reactivo: SPA que consuma los datos procesados mediante WebSockets o SSE. Mostrar mapa, alertas en tiempo real y chat con la IA"*.
 
-El mismo §4.B incluye la query canónica que ata mapa e IA: *“¿Qué vehículos llevan detenidos más de 20 minutos en zonas críticas?”*. Sin definición de **zona crítica**, ni el mapa puede pintarla ni el agente puede responder sin alucinar. Ambos deben compartir la misma fuente de verdad.
+El mismo sec. 4.B incluye la query canónica que ata mapa e IA: *“¿Qué vehículos llevan detenidos más de 20 minutos en zonas críticas?”*. Sin definición de **zona crítica**, ni el mapa puede pintarla ni el agente puede responder sin alucinar. Ambos deben compartir la misma fuente de verdad.
 
 Restricciones del entorno: SPA Vite (no Next SSR), máquina dev 16 GB, costo cero MVP (coherente con ADR-0003 free tier), sin secretos en frontend (ADR-0004), y Nivel 1 ya fijado sin `Map Provider` externo (ver `docs/c4/01-context.md` - tiles directo `web -> OSM`, nunca proxy por `cmd/api`).
 
@@ -57,7 +57,7 @@ Horizonte de escala: miles de dispositivos con marker por vehículo + polígonos
 
 ## Referencias
 
-- `docs/PRUEBA-TECNICA.md` §4.B (query zonas críticas 20 min) y §4.C (mapa + SSE)
+- `docs/PRUEBA-TECNICA.md` sec. 4.B (query zonas críticas 20 min) y sec. 4.C (mapa + SSE)
 - `docs/c4/01-context.md` (`Qué NO va en Nivel 1` - Map Provider a Nivel 2)
 - `docs/c4/workspace.dsl` (Contexto_N1 sin Map Provider - tiles directo web->OSM)
 - ADR-0003 (costo cero, sin secretos) y ADR-0004 (no hardcodear tokens)

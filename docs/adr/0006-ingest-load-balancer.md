@@ -7,7 +7,7 @@
 
 ## Contexto
 
-El enunciado canónico exige dimensionar la ingesta para **cientos o miles de dispositivos enviando telemetría a alta frecuencia**, con el agravante de que el móvil es **offline-first y sincroniza en bloque al reconectar** (`docs/PRUEBA-TECNICA.md` §4.A y §4.D). Ese patrón no es carga uniforme: es sostenido + **thundering herd** en la ventana de reconexión.
+El enunciado canónico exige dimensionar la ingesta para **cientos o miles de dispositivos enviando telemetría a alta frecuencia**, con el agravante de que el móvil es **offline-first y sincroniza en bloque al reconectar** (`docs/PRUEBA-TECNICA.md` sec. 4.A y sec. 4.D). Ese patrón no es carga uniforme: es sostenido + **thundering herd** en la ventana de reconexión.
 
 Arquitectura vigente:
 
@@ -67,6 +67,6 @@ Esta decisión **habilita el scale-out horizontal** previsto en ADR-0005 sin pag
 ## Referencias
 
 - Dictamen `scalability` 2026-08-22 — ADR-0006 candidato: veredicto **ADOPTAR CON CONDICIONES**, números de herd, capacidad por réplica (5-8k msg/s/core), y condiciones 1-7 incorporadas arriba.
-- `docs/PRUEBA-TECNICA.md` §4.A (ingesta alta concurrencia, resiliencia) y §4.D (offline-first, sync en bloque).
+- `docs/PRUEBA-TECNICA.md` sec. 4.A (ingesta alta concurrencia, resiliencia) y sec. 4.D (offline-first, sync en bloque).
 - ADR-0001 (JetStream backbone, retención/bytes, backpressure), ADR-0002 (layout monorepo), ADR-0005 (monolito modular, breakers, escalado por réplicas).
 - Stack decidido en AGENTS.md: `nats.go`, `jackc/pgx`, `sony/gobreaker`; config por env vars.
