@@ -10,7 +10,7 @@ La plataforma debe ingestar telemetría de **miles de dispositivos a alta frecue
 
 Carga de referencia: 5.000 dispositivos @ 1 evento/5 s → **1.000 msg/s sostenidos**, picos 2-3× (2.000-3.000 msg/s). Horizonte de diseño: 10.000-50.000 dispositivos (2.000-10.000 msg/s). Payload 200-500 B.
 
-Restricción dura de entorno: máquina de desarrollo con **16 GB RAM**; la infra local debe caber holgada (un solo binario, sin cluster en dev).
+Restricción dura de entorno: máquina de desarrollo **macOS Intel (darwin/amd64) con 16 GB RAM**; la infra local debe caber holgada (un solo binario, sin cluster en dev). Todas las imágenes elegidas publican `linux/amd64` nativo (sin emulación en Docker Desktop sobre Intel).
 
 ## Decisión
 
@@ -20,7 +20,14 @@ NATS **JetStream** como único backbone de eventos, con streams durables y sujet
 - `alerts.*` → stream `ALERTS` → consume `fleet` (read model/SSE) y el `AI Agent`.
 - Idempotencia resuelta en **dominio** (`client_event_id` UUID v4, dedup); el broker NO ofrece exactly-once (decisión deliberada: el coste de fingirlo no vale para telemetría).
 
-Se rechaza Kafka, RabbitMQ y Redis Streams para este workload (ver comparativa de costes en el dictamen): Kafka consume ~100× más RAM y ~10× más superficie operativa para entregar lo mismo (rompería la restricción de 16 GB); RabbitMQ tiene replay débil (solo vía plugin Streams); Redis Streams exige durabilidad costosa y liderazgo multi-nodo frágil.
+## Opciones evaluadas y descartadas
+
+| Opción | Veredicto | Motivo (para este workload y entorno) |
+|---|---|---|
+| **Kafka** | Descartada | ~100× más RAM y ~10× más superficie operativa para entregar lo mismo; rompe la restricción de 16 GB |
+| **RabbitMQ** | Descartada | Replay débil (solo vía plugin Streams) |
+| **Redis Streams** | Descartada | Exige durabilidad costosa y liderazgo multi-nodo frágil |
+| **NATS Core (sin JetStream)** | Prohibida (cond. 8) | Fire-and-forget: sin durabilidad, mezcla de modelos |
 
 ## Condiciones obligatorias (dictamen `scalability`)
 
@@ -51,4 +58,4 @@ Se rechaza Kafka, RabbitMQ y Redis Streams para este workload (ver comparativa d
 ## Referencias
 
 - Dictamen `scalability` 2026-08-17 (APROBADO CON CONDICIONES): benchmarks natsbench oficiales (core pub 14,8 M msg/s; JS sync 35,7k @ 28 µs; JS async file 403,8k), benchmark Go oficial nats-server PR #3425 (sync R1 file 32,5 µs; async W=1000 3,5 µs; R3 1 KB 22,7 µs), issue #5637 (contención same-node, filtrado por subject sin barrido lineal desde 2.8), docs de durabilidad JetStream (`sync_interval` 2 min, pérdida R1).
-- Registrado en `docs/IAUDIT.md` (A1 — validación de `scalability` previa a ADR).
+- Registrado en `docs/IAUDIT.md` (entrada A1 de la iteración previa archivada en la rama `backup/pre-reset-harness`; se re-registrará contra el código nuevo al implementar el SPEC-001).
