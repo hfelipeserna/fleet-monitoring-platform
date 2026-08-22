@@ -3,7 +3,8 @@
 - **Fecha:** 2026-08-21
 - **Estado:** Aceptado (con condiciones; dictamen de `security` incorporado)
 - **Enmienda 2026-08-22:** validación de costo — el MVP corre en free tier de la Gemini API (costo $0); ver condición 7
-- **Decisores:** `architect` + dictamen de `security` (obligatorio según AGENTS.md: el componente expone un endpoint de chat con acceso a datos de flota)
+- **Enmienda 2026-08-22 (aislamiento front↔agente):** fachada BFF obligatoria — ver condición 9 nueva; vinculante para diseño y SPECs posteriores (coherente con ADR-0002 y ADR-0005)
+- **Decisores:** `architect` + dictamen de `security` (obligatorio según AGENTS.md: el componente expone un endpoint de chat con acceso a datos de flota) + enmienda de aislamiento validada por `architect`
 
 ## Contexto
 
@@ -40,6 +41,7 @@ Requisitos del framework: soporte Go nativo y maduro, abstracción de flows (pip
 6. **Observabilidad**: Dev UI de Genkit prohibida fuera de desarrollo local y jamás expuesta por Compose; en producción traces sin contenido de prompts/outputs (solo metadatos); logs del endpoint sin contenido de chat ni PII.
 7. **Costo cero para el MVP**: el agente opera exclusivamente dentro del free tier de la Gemini API. Modelos clase Flash únicamente (`gemini-2.5-flash` por defecto, seleccionable vía env var `GEMINI_MODEL` sin tocar código; a ago-2026 los modelos Pro no tienen capa gratuita). La key se crea en AI Studio sin tarjeta de crédito y debe quedar restringida al endpoint de Generative Language (obligatorio por política de Google desde jun-2026; las keys nuevas de AI Studio ya nacen restringidas). Presupuesto/alerta de gasto en la API key como red de seguridad ante exceder el free tier (límites ~10 RPM y cap diario según modelo/proyecto — coherente con el rate limit del endpoint de chat, cond. 5); migración a Vertex AI + service account/IAM anotada como condición previa a producción real (la AI Studio key es secreto plano sin IAM fino — aceptable solo en MVP).
 8. **Re-auditoría `security` sobre la implementación concreta** del BC `assistant` antes de cerrar su SPEC: este dictamen cubre la decisión, no el código.
+9. **Aislamiento front↔agente vía backend (BFF / Anti-Corruption Layer) — enmienda 2026-08-22, vinculante para diseño/SPECs posteriores:** el portal web (SPA React) **nunca** accede a TimescaleDB, NATS JetStream, Genkit ni a `GEMINI_API_KEY`, ni conoce prompts, tools o SQL. Flujo obligatorio: `SPA → cmd/api (POST /api/chat, SSE /api/alerts) → cmd/agent (flow Genkit) → tools read-only → port fleet → TimescaleDB/NATS`. Prohibido: (a) importar `pgx/nats.go/genkit` en `web/`, (b) llamar directo SPA→Gemini/DB, (c) exponer prompts/tools/SQL o trazas con PII al front. `cmd/api` es la única superficie pública; valida JWT, aplica rate limit/timeout/gobreaker (cond. 5) y filtra salida; `cmd/agent` valida scope por JWT en código (cond. 2) y minimiza datos (cond. 4). Les SPECs web/agent deben citar esta fachada en sus ACs y testear `401/429` sin tocar DB; `depguard` en CI bloquea imports `web→assistant` y `assistant/domain→adapters`.
 
 ## Consecuencias
 

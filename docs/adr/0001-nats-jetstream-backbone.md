@@ -2,7 +2,8 @@
 
 - **Fecha:** 2026-08-17
 - **Estado:** Aceptado (con condiciones; dictamen de `scalability` incorporado)
-- **Decisores:** `architect` + dictamen de `scalability` (obligatorio según AGENTS.md para decisiones candidatas a ADR)
+- **Enmienda 2026-08-22:** precisión de rate limiting dual (online vs batch offline-first) — ver condición 3 enmendada; vinculante para diseño y SPECs posteriores (coherente con ADR-0006 cond. 4-5)
+- **Decisores:** `architect` + dictamen de `scalability` (obligatorio según AGENTS.md para decisiones candidatas a ADR) + enmienda validada por `architect`
 
 ## Contexto
 
@@ -33,7 +34,7 @@ NATS **JetStream** como único backbone de eventos, con streams durables y sujet
 
 1. **Stream TELEMETRY:** `storage=file`, `retention=limits`, `discard=old`; **dev: replicas 1, `max_age=24h`, `max_bytes=5 GB`** (a 1.000 msg/s sostenidos el stream crece ~1,4 GB/h); **prod: replicas 3, `max_age=72h`, `max_bytes=50-100 GB`**. ALERTS: retención 7 días (volumen despreciable).
 2. **Consumidor durable sí o sí**: nombre fijo, `AckExplicit`, `AckWait 30-60 s`, **`MaxDeliver=3` + DLQ `telemetry.dlq`**, `MaxAckPending` acotado (100-1.000). Esta ventana acotada + `PublishAsyncMaxPending` en la ingesta son **el** mecanismo de backpressure.
-3. **Ingesta:** `js.PublishAsync` con ventana acotada y `PublishAsyncComplete()` **antes** del 200 al móvil; rate-limit por dispositivo (mín. 2-5 s entre eventos).
+3. **Ingesta:** `js.PublishAsync` con ventana acotada y `PublishAsyncComplete()` **antes** del 200 al móvil; rate limiting dual por `device_id` (enmienda 2026-08-22, vinculante para diseño/SPECs posteriores): **(a) Online steady:** token bucket 12 eventos/min (1/5 s, burst 20) → `429 + Retry-After: 5` si excede; **(b) Recuperación batch offline-first:** bucket separado 1 batch req/5 s, máx. 500 eventos/batch y 1 MB, máx. 500 eventos/30 s sliding window — un buffer de 720 eventos (60 min offline) se drena en 2 reqs espaciados 5 s, no como violación; timestamps históricos van a hypertable con `time` original, no al cómputo realtime de alertas; **(c) Global LB:** `limit_req 10k rps` burst 2k como fusible DoS. Implementación: middleware local `golang.org/x/time/rate` por réplica (stateless) + `limit_req` en LB; todo `429` reencola en SDK móvil sin pérdida (comportamiento offline-first natural).
 4. **Persistencia TimescaleDB:** escritura en batches (multi-row INSERT ≥ 500 filas o `CopyFrom`), **índice `(device_id, time)` obligatorio**, continuous aggregates para el dashboard, compresión desde el día 1 (5-15×).
 5. **Monitoreo desde el día 1** (`prometheus-nats-exporter`): lag del consumer (`num_ack_pending`), bytes de stream ≥ 80% de `max_bytes`, `nats-server_jetstream_consumer_ack_pending`. Sin estas alertas, `discard=old` convierte el replay en pérdida silenciosa.
 6. **Ventana de pérdida R1 declarada:** en dev, una caída de host puede perder hasta 2 min de mensajes ya acked (`sync_interval` default). Aceptable en demo; prod con R3 (ack por quórum) o `sync_always` si se requiere pérdida-cero.
