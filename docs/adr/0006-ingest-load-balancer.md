@@ -3,7 +3,8 @@
 - **Fecha:** 2026-08-22
 - **Estado:** Aceptado (recomendación con condiciones; dictamen de `scalability` incorporado)
 - **Enmienda 2026-08-22:** precisión de rate limiting dual batch/offline-first — ver condiciones 3-4 enmendadas; vinculante para diseño y SPECs posteriores (coherente con ADR-0001 cond. 3 enmendada)
-- **Decisores:** `architect` + dictamen de `scalability` (obligatorio según AGENTS.md para decisiones candidatas a ADR) + enmienda validada por `architect`
+- **Enmienda 2026-08-23:** corrección semántica `200` → `202 Accepted` para ingesta async (coherente con ADR-0001 enmienda 2026-08-23)
+- **Decisores:** `architect` + dictamen de `scalability` (obligatorio según AGENTS.md para decisiones candidatas a ADR) + enmiendas validadas por `architect`
 
 ## Contexto
 
@@ -12,7 +13,7 @@ El enunciado canónico exige dimensionar la ingesta para **cientos o miles de di
 Arquitectura vigente:
 
 - ADR-0001 fija carga de referencia **5.000 dispositivos @ 1 evento/5 s = 1.000 msg/s sostenidos**, picos 2-3× (2.000-3.000 msg/s), horizonte 50.000 dispositivos (10.000 msg/s), payload 200-500 B. JetStream R1 file async ~370k msg/s; el broker no es el cuello (la carga usa 0,3-2 %). Cuello real: **TimescaleDB single-writer 15-50k filas/s** con batching; disco/retención (~1,4 GB/h a 1.000 msg/s).
-- ADR-0002/ADR-0005: monorepo, 1 módulo Go, **4 bins** (`cmd/ingest`, `cmd/consumer`, `cmd/api`, `cmd/agent`). `ingest` es **stateless** (valida → `PublishAsync` a JetStream → `PublishAsyncComplete` antes del 200). Escalado previsto: réplicas de bins completos, sin mesh.
+- ADR-0002/ADR-0005: monorepo, 1 módulo Go, **4 bins** (`cmd/ingest`, `cmd/consumer`, `cmd/api`, `cmd/agent`). `ingest` es **stateless** (valida → `PublishAsync` a JetStream → `PublishAsyncComplete` antes del `202 Accepted` — enmienda 2026-08-23). Escalado previsto: réplicas de bins completos, sin mesh.
 
 Sin balanceador, `ingest` es SPOF aunque sea stateless: una sola réplica directa no da HA, no permite drain en deploys y no absorbe el herd sin batch. Con batch + jitter el herd es problema de buffer NATS/DB, no de HTTP; sin batch, el herd sí satura HTTP.
 

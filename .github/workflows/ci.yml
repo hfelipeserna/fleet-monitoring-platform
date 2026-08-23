@@ -50,11 +50,11 @@ jobs:
 
       - name: golangci-lint — capas + BCs aislados (ADR-0002 cond.1)
         if: hashFiles('backend/go.mod') != ''
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           working-directory: backend
-          args: run ./...
+          args: ./...
 
       - name: govulncheck — CVEs en dependencias Go
         if: hashFiles('backend/go.mod') != ''
