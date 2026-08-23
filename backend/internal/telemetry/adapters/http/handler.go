@@ -7,7 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +31,9 @@ type handler struct {
 	breaker  Breaker
 	js       JetStreamInfo
 	inflight atomic.Int64
+	totalAll atomic.Int64
+	mu       sync.RWMutex
+	perPlate map[string]*atomic.Int64
 }
 
 func NewHandler(pub Publisher, limiter RateLimiter, breaker Breaker, js JetStreamInfo) http.Handler {
@@ -37,7 +42,33 @@ func NewHandler(pub Publisher, limiter RateLimiter, breaker Breaker, js JetStrea
 }
 
 func NewHandlerWithService(svc *application.IngestService, breaker Breaker, js JetStreamInfo) http.Handler {
-	return &handler{svc: svc, breaker: breaker, js: js}
+	return &handler{svc: svc, breaker: breaker, js: js, perPlate: make(map[string]*atomic.Int64)}
+}
+
+func (h *handler) recordIngest(plate string, n int) {
+	h.totalAll.Add(int64(n))
+	h.mu.RLock()
+	ctr, ok := h.perPlate[plate]
+	h.mu.RUnlock()
+	if ok {
+		ctr.Add(int64(n))
+		return
+	}
+	h.mu.Lock()
+	ctr, ok = h.perPlate[plate]
+	if !ok {
+		ctr = &atomic.Int64{}
+		h.perPlate[plate] = ctr
+	}
+	h.mu.Unlock()
+	ctr.Add(int64(n))
+}
+
+func escapeLabel(s string) string {
+	s = strings.ReplaceAll(s, "\\", `\\`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\"", `\"`)
+	return s
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +117,7 @@ func (h *handler) handleSingle(w http.ResponseWriter, r *http.Request) {
 		mapServiceError(w, err)
 		return
 	}
+	h.recordIngest(evt.Plate, 1)
 	slog.Info("ingest single", "plate", evt.Plate, "client_event_id", evt.ClientEventID)
 	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
 }
@@ -115,6 +147,9 @@ func (h *handler) handleBatch(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		mapServiceError(w, err)
 		return
+	}
+	for _, e := range evts {
+		h.recordIngest(e.Plate, 1)
 	}
 	if len(evts) > 0 {
 		slog.Info("ingest batch", "plate", evts[0].Plate, "count", len(evts))
@@ -337,6 +372,23 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP breaker_state breaker open state\n")
 	fmt.Fprintf(w, "# TYPE breaker_state gauge\n")
 	fmt.Fprintf(w, "breaker_state %d\n", state)
+	fmt.Fprintf(w, "# HELP telemetry_ingest_total total telemetry events ingested via 202\n")
+	fmt.Fprintf(w, "# TYPE telemetry_ingest_total counter\n")
+	h.mu.RLock()
+	plates := make([]string, 0, len(h.perPlate))
+	snapshot := make(map[string]int64, len(h.perPlate))
+	for plate, ctr := range h.perPlate {
+		plates = append(plates, plate)
+		snapshot[plate] = ctr.Load()
+	}
+	h.mu.RUnlock()
+	sort.Strings(plates)
+	for _, plate := range plates {
+		fmt.Fprintf(w, "telemetry_ingest_total{plate=\"%s\"} %d\n", escapeLabel(plate), snapshot[plate])
+	}
+	fmt.Fprintf(w, "# HELP telemetry_ingest_total_sum total telemetry events ingested via 202\n")
+	fmt.Fprintf(w, "# TYPE telemetry_ingest_total_sum counter\n")
+	fmt.Fprintf(w, "telemetry_ingest_total_sum %d\n", h.totalAll.Load())
 }
 
 func mapServiceError(w http.ResponseWriter, err error) {
