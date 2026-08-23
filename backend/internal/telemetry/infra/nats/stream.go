@@ -10,7 +10,7 @@ import (
 
 const (
 	streamMaxAge     = 24 * time.Hour
-	streamDuplicates = 24 * time.Hour
+	streamDuplicates = 2 * time.Minute
 )
 
 func EnsureStream(js natsio.JetStreamContext, maxBytes int64) error {

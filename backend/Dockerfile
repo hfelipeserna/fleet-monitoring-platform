@@ -14,4 +14,6 @@ RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
 COPY --from=builder /out/ingest /out/consumer /usr/local/bin/
 COPY migrations /app/migrations
+RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
+USER app
 EXPOSE 8080 8081

@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS telemetry_plate_received_at_idx ON telemetry (plate, 
 -- Idempotency: TimescaleDB hypertable UNIQUE/PK must include partition column (received_at).
 -- A UNIQUE INDEX on (client_event_id) alone violates hypertable constraints and fails on create_hypertable.
 -- End-to-end dedup is enforced via:
---   1) NATS JetStream DuplicateWindow 24h (DuplicateWindow + MsgId=client_event_id) for ingestion dedup, and
+--   1) NATS JetStream DuplicateWindow 2m (Duplicates=2m per SPEC FR-003, MsgId=client_event_id) for short ingestion dedup, and
 --   2) DB-level dedup table telemetry_dedup (PK client_event_id) joined at insert time.
 -- This keeps hypertable PK (client_event_id, received_at) valid while guaranteeing global idempotency
 -- even when retry carries different received_at/occurred_at.

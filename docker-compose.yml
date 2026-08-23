@@ -21,8 +21,8 @@ services:
     image: nats:2.10-alpine
     command: ["-js", "--store_dir", "/data", "-m", "8222"]
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     volumes:
       - nats_data:/data
     networks: [fleet]
@@ -41,9 +41,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-fleet}
       POSTGRES_USER: ${POSTGRES_USER:-fleet}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
-      POSTGRES_HOST_AUTH_METHOD: trust
+      # POSTGRES_HOST_AUTH_METHOD no se usa - default scram-sha-256; no usar trust
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/migrations/0001_telemetry.sql:/docker-entrypoint-initdb.d/0001_telemetry.sql:ro
@@ -51,7 +51,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fleet} -d ${POSTGRES_DB:-fleet}"]
+      test: ["CMD-SHELL", "PGPASSWORD=${POSTGRES_PASSWORD:-fleet} pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fleet} -d ${POSTGRES_DB:-fleet}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -77,6 +77,7 @@ services:
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
+    stop_grace_period: 20s
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
       interval: 5s
@@ -96,7 +97,7 @@ services:
       CONSUMER_HEALTH_PORT: 8081
       JETSTREAM_MAX_BYTES: ${JETSTREAM_MAX_BYTES:-5368709120}
     ports:
-      - "8082:8081"
+      - "127.0.0.1:8082:8081"
     depends_on:
       nats:
         condition: service_healthy
@@ -107,6 +108,7 @@ services:
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
+    stop_grace_period: 20s
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz || exit 1"]
       interval: 5s
@@ -155,9 +157,10 @@ services:
   grafana:
     image: grafana/grafana:10.4.2
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-change-me}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Grafana secrets: override via .env; default change-me solo para CI/local - prod requiere secreto gestionado. No hardcodear admin/admin.
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infra/observability/grafana/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
@@ -170,6 +173,12 @@ services:
     restart: unless-stopped
     logging: *default-logging
     profiles: ["observability"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   loki:
     image: grafana/loki:2.9.8
@@ -201,6 +210,12 @@ services:
     restart: unless-stopped
     logging: *default-logging
     profiles: ["observability"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/status || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
 
   structurizr:
     image: structurizr/structurizr:latest
