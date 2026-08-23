@@ -54,7 +54,7 @@ jobs:
         with:
           version: v2.12.2
           working-directory: backend
-          args: run ./...
+          args: ./...
 
       - name: govulncheck — CVEs en dependencias Go
         if: hashFiles('backend/go.mod') != ''
