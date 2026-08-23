@@ -1,16 +1,215 @@
 name: fleet-monitoring-platform
 
-# MVP local - ver AGENTS.md y ADR-0002
-# Stack: NATS JetStream + TimescaleDB + Go bins (ingest/consumer/api/agent) + Structurizr Lite
-# Footprint 16GB: todos los servicios < 4GB en reposo; Structurizr Lite ~200MB solo para docs
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  fleet:
+    driver: bridge
+
+volumes:
+  nats_data:
+  pgdata:
+  prometheus_data:
+  grafana_data:
 
 services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "--store_dir", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/varz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fleet}
+      POSTGRES_USER: ${POSTGRES_USER:-fleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/0001_telemetry.sql:/docker-entrypoint-initdb.d/0001_telemetry.sql:ro
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fleet} -d ${POSTGRES_DB:-fleet}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  ingest:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: fleet-ingest:local
+    command: ["/usr/local/bin/ingest"]
+    environment:
+      NATS_URL: nats://nats:4222
+      HTTP_PORT: 8080
+      NATS_MAX_PENDING: ${NATS_MAX_PENDING:-1024}
+      JETSTREAM_MAX_BYTES: ${JETSTREAM_MAX_BYTES:-5368709120}
+      PUBLISH_TIMEOUT: ${PUBLISH_TIMEOUT:-3s}
+    ports:
+      - "8081:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  consumer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: fleet-consumer:local
+    command: ["/usr/local/bin/consumer"]
+    environment:
+      NATS_URL: nats://nats:4222
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleet}:${POSTGRES_PASSWORD:-fleet}@timescaledb:5432/${POSTGRES_DB:-fleet}?sslmode=disable
+      CONSUMER_HEALTH_PORT: 8081
+      JETSTREAM_MAX_BYTES: ${JETSTREAM_MAX_BYTES:-5368709120}
+    ports:
+      - "8082:8081"
+    depends_on:
+      nats:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      ingest:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  lb:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      ingest:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:80/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:v2.53.2
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--web.console.libraries=/usr/share/prometheus/console_libraries", "--web.console.templates=/usr/share/prometheus/consoles"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["observability"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/observability/grafana/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./infra/observability/grafana/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["observability"]
+
+  loki:
+    image: grafana/loki:2.9.8
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./infra/loki/loki.yml:/etc/loki/loki.yml:ro
+    ports:
+      - "3100:3100"
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["observability"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./infra/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["observability"]
+
   structurizr:
     image: structurizr/structurizr:latest
     command: local
     ports:
-      - "8080:8080"
+      - "8088:8080"
     volumes:
       - ./docs/c4:/usr/local/structurizr
+    networks: [fleet]
     restart: unless-stopped
+    logging: *default-logging
     profiles: ["docs"]

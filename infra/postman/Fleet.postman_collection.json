@@ -1,0 +1,255 @@
+{
+  "info": {
+    "name": "Fleet Monitoring - SPEC-001",
+    "description": "Smoke E2E AC-011 FR-011: LB -> Ingest -> NATS -> Consumer -> TimescaleDB. Run against docker compose LB http://localhost:8080",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /healthz 200",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/healthz",
+        "description": "AC-011 healthz via LB"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('healthz 200', () => pm.response.to.have.status(200));",
+              "pm.test('has breaker', () => { const j=pm.response.json(); pm.expect(j.breaker).to.be.a('string'); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /metrics 200",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/metrics",
+        "description": "AC-011 metrics ingest_inflight etc"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('metrics 200', () => pm.response.to.have.status(200));",
+              "pm.test('has ingest_inflight', () => pm.expect(pm.response.text()).to.include('ingest_inflight'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry single GTP890 202",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plate\": \"GTP890\",\n  \"speed\": 42,\n  \"lat\": 4.711,\n  \"lon\": -74.072,\n  \"client_event_id\": \"{{$guid}}\",\n  \"occurred_at\": \"2026-08-23T12:00:00Z\"\n}"
+        },
+        "description": "AC-001 single valid via LB -> 202, then dedup test reuse same id"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('single 202', () => pm.response.to.have.status(202));",
+              "pm.test('accepted true', () => { const j=pm.response.json(); pm.expect(j.accepted).to.eql(true); });",
+              "const id=JSON.parse(pm.request.body.raw).client_event_id; pm.collectionVariables.set('last_client_event_id', id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry dedup same client_event_id 202 no duplicate",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plate\": \"GTP890\",\n  \"speed\": 42,\n  \"lat\": 4.711,\n  \"lon\": -74.072,\n  \"client_event_id\": \"{{last_client_event_id}}\"\n}"
+        },
+        "description": "AC-003 dedup Nats-Msg-Id + ON CONFLICT"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('dedup 202', () => pm.response.to.have.status(202));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry invalid plate 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"plate\":\"GTP89\",\"speed\":10,\"lat\":4.7,\"lon\":-74}"
+        },
+        "description": "AC-004 plate regex fail -> 400 no publish"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('invalid plate 400', () => pm.response.to.have.status(400));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry invalid speed negative 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"plate\":\"TTY423\",\"speed\":-1,\"lat\":4.7,\"lon\":-74}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('negative speed 400', () => pm.response.to.have.status(400));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry invalid lat out of range 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"plate\":\"GTP890\",\"speed\":10,\"lat\":100,\"lon\":-74}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('lat out of range 400', () => pm.response.to.have.status(400));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry lat/lon null valid 202",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"plate\":\"GTP890\",\"speed\":0,\"lat\":null,\"lon\":null,\"client_event_id\":\"{{$guid}}\"}"
+        },
+        "description": "FR-005 null GPS valid, speed 0 valid"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('null latlon 202', () => pm.response.to.have.status(202));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry speed float invalid 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"plate\":\"GTP890\",\"speed\":42.5,\"lat\":4.7,\"lon\":-74}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": ["pm.test('float speed 400', () => pm.response.to.have.status(400));"],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /v1/telemetry/batch 2 events 202",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/v1/telemetry/batch",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"events\": [\n    {\"plate\":\"GTP890\",\"speed\":10,\"lat\":4.7,\"lon\":-74,\"client_event_id\":\"{{$guid}}\"},\n    {\"plate\":\"TTY423\",\"speed\":20,\"lat\":4.71,\"lon\":-74.07,\"client_event_id\":\"{{$guid}}\"}\n  ]\n}"
+        },
+        "description": "AC-002 batch variable 1-500 -> 202 {accepted:2}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('batch 202', () => pm.response.to.have.status(202));",
+              "pm.test('accepted 2', () => { const j=pm.response.json(); pm.expect(j.accepted).to.eql(2); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rate limiting hint - expect 429 vs 503 distinct",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/healthz"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('healthz still 200 after load', () => pm.response.to.have.status(200));",
+              "// manual: burst 21 req/min per plate -> 429, MaxPending full -> 503 distinct Retry-After"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}
