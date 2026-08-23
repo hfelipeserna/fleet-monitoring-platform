@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	httpadapter "fleetmonitoring/backend/internal/telemetry/adapters/http"
 )
 
 func main() {
@@ -26,21 +27,20 @@ func main() {
 			slog.Error("nats drain failed", "error", err)
 		}
 	}()
-	srv, limiter := bootstrapServer(ctx, js, cfg)
-	defer limiter.Stop()
-	go func() {
-		slog.Info("ingest listening", "port", cfg.httpPort, "nats", cfg.natsURL)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("http serve failed", "error", err)
-			stop()
-		}
-	}()
+	pool, err := bootstrapPool(ctx, cfg.databaseURL)
+	if err != nil {
+		slog.Error("bootstrap pool failed", "error", err)
+		return
+	}
+	defer pool.Close()
+	writer, dbBreaker, publishBreaker := bootstrapBreakers(pool)
+	consumer, opts := bootstrapConsumer(writer, js)
+	dlqJS := bootstrapDLQ(js)
+	dlqHandler := httpadapter.NewDLQHandler(dlqJS)
+	go serveHealth(cfg.healthPort, dlqHandler, dbBreaker, publishBreaker)
+	go consumeLoop(ctx, js, consumer, opts)
 	<-ctx.Done()
 	slog.Info("shutdown signal received")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown failed", "error", err)
-	}
-	slog.Info("ingest stopped")
+	time.Sleep(2 * time.Second)
+	slog.Info("consumer stopped")
 }

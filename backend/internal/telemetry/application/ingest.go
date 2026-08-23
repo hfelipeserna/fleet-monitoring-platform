@@ -2,13 +2,13 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"fleetmonitoring/backend/internal/shared/domain"
+	sharedidgen "fleetmonitoring/backend/internal/shared/idgen"
 	telemetry "fleetmonitoring/backend/internal/telemetry/domain"
 )
 
@@ -36,6 +36,7 @@ type RateLimiter interface {
 
 type Breaker interface {
 	State() string
+	IsOpen() bool
 	Allow() error
 }
 
@@ -86,7 +87,7 @@ func (f funcClock) Now() time.Time { return f.fn() }
 
 type defaultIDGenerator struct{}
 
-func (defaultIDGenerator) NewID() string { return generateUUID() }
+func (defaultIDGenerator) NewID() string { return sharedidgen.GenerateUUID() }
 
 type DefaultRawValidator struct{}
 
@@ -272,7 +273,7 @@ func (s *IngestService) checkBreaker() error {
 	if s.breaker == nil {
 		return nil
 	}
-	if strings.EqualFold(s.breaker.State(), "open") {
+	if s.breaker.IsOpen() {
 		return fmt.Errorf("breaker open: %w", ErrBackpressure)
 	}
 	if err := s.breaker.Allow(); err != nil {
@@ -369,31 +370,26 @@ func validateOccurredAt(ts *time.Time, now time.Time) error {
 	return nil
 }
 
+func isHexChar(c rune) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
 func isValidUUID(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
 	for i, c := range s {
-		switch i {
-		case 8, 13, 18, 23:
+		if i == 8 || i == 13 || i == 18 || i == 23 {
 			if c != '-' {
 				return false
 			}
-		default:
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-				return false
-			}
+			continue
+		}
+		if !isHexChar(c) {
+			return false
 		}
 	}
 	return true
-}
-
-func generateUUID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func isBackpressureError(err error) bool {

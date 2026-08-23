@@ -21,12 +21,12 @@ import (
 
 // fakePublisher records calls and simulates backpressure.
 type fakePublisher struct {
-	publishErr     error
+	publishErr      error
 	publishBatchErr error
-	pending        int
-	maxPending     int
-	published      []domain.TelemetryEvent
-	batchPublished [][]domain.TelemetryEvent
+	pending         int
+	maxPending      int
+	published       []domain.TelemetryEvent
+	batchPublished  [][]domain.TelemetryEvent
 }
 
 func (f *fakePublisher) Publish(ctx context.Context, evt domain.TelemetryEvent) error {
@@ -83,6 +83,7 @@ type fakeBreaker struct {
 }
 
 func (f *fakeBreaker) State() string { return f.state }
+func (f *fakeBreaker) IsOpen() bool  { return f.state == "open" }
 func (f *fakeBreaker) Allow() error  { return f.err }
 
 type fakeJetStream struct {
@@ -526,7 +527,7 @@ func TestIngestBatch_Limits(t *testing.T) {
 		h := buildHandler(pub, limiter, breaker, js)
 		events := make([]map[string]interface{}, 501)
 		for i := 0; i < 501; i++ {
-			events[i] = map[string]interface{}{"plate": "GTP890", "speed": 10, "lat": 4.7, "lon": -74.0, "client_event_id": "550e8400-e29b-41d4-a716-44665544" + strings.Repeat("0", 4) }
+			events[i] = map[string]interface{}{"plate": "GTP890", "speed": 10, "lat": 4.7, "lon": -74.0, "client_event_id": "550e8400-e29b-41d4-a716-44665544" + strings.Repeat("0", 4)}
 		}
 		body := marshal(map[string]interface{}{"events": events})
 		req := nethttptest.NewRequest(nethttp.MethodPost, "/v1/telemetry/batch", bytes.NewReader(body))
@@ -545,8 +546,8 @@ func TestIngestBatch_Limits(t *testing.T) {
 		}
 	})
 
-	t.Run("batch >1MB -> 400 if limit enforced without publish", func(t *testing.T) {
-		// Covers [SPEC-001: AC-002, FR-002] TEST-002
+	t.Run("batch >1MB -> 413 payload too large without publish", func(t *testing.T) {
+		// Covers [SPEC-001: AC-002, FR-002] TEST-002 - handler enforces 1MiB via MaxBytesReader -> 413
 		// Arrange
 		pub := &fakePublisher{maxPending: 4096}
 		limiter := &fakeLimiter{allow: true, allowBatch: true}
@@ -571,8 +572,8 @@ func TestIngestBatch_Limits(t *testing.T) {
 		h.ServeHTTP(rec, req)
 
 		// Assert
-		if rec.Code != nethttp.StatusBadRequest {
-			t.Fatalf("expected 400 for >1MB, got %d body %s len %d", rec.Code, rec.Body.String(), len(body))
+		if rec.Code != nethttp.StatusRequestEntityTooLarge {
+			t.Fatalf("expected 413 payload_too_large for >1MB, got %d body %s len %d", rec.Code, rec.Body.String(), len(body))
 		}
 		if len(pub.batchPublished) != 0 {
 			t.Fatalf("expected no publish for oversize")
@@ -985,8 +986,8 @@ func TestMethodAndContentType(t *testing.T) {
 		}
 	})
 
-	t.Run("body too large single event with very large payload -> 400 or 413", func(t *testing.T) {
-		// Covers [SPEC-001: FR-002] TEST-002
+	t.Run("body too large single event with very large payload -> 413", func(t *testing.T) {
+		// Covers [SPEC-001: FR-002] TEST-002 - MaxBytesReader returns MaxBytesError -> 413
 		// Arrange
 		pub := &fakePublisher{maxPending: 1024}
 		limiter := &fakeLimiter{allow: true, allowBatch: true}
@@ -1004,8 +1005,8 @@ func TestMethodAndContentType(t *testing.T) {
 		h.ServeHTTP(rec, req)
 
 		// Assert
-		if rec.Code != nethttp.StatusBadRequest && rec.Code != nethttp.StatusRequestEntityTooLarge {
-			t.Fatalf("expected 400 or 413 for oversize single, got %d len %d", rec.Code, len(body))
+		if rec.Code != nethttp.StatusRequestEntityTooLarge {
+			t.Fatalf("expected 413 payload_too_large for oversize single, got %d len %d body %s", rec.Code, len(body), rec.Body.String())
 		}
 		if len(pub.published) != 0 {
 			t.Fatalf("expected no publish for oversize")

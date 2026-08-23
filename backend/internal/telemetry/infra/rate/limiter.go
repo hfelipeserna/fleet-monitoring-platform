@@ -8,6 +8,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	onlineRate       = 12.0 / 60.0
+	onlineBurst      = 20
+	batchReqInterval = 5 * time.Second
+	batchRate        = 500.0 / 30.0
+	batchBurst       = 500
+	cleanupInterval  = 10 * time.Minute
+	entryTTL         = 30 * time.Minute
+)
+
 type entry struct {
 	online     *rate.Limiter
 	batchReq   *rate.Limiter
@@ -52,12 +62,8 @@ func (l *Limiter) AllowBatch(plate string, n int) bool {
 	if n <= 0 {
 		return true
 	}
-	for range n {
-		if !e.batchCount.Allow() {
-			return false
-		}
-	}
-	return true
+	// O(1) token consumption using AllowN instead of loop O(n).
+	return e.batchCount.AllowN(time.Now(), n)
 }
 
 func (l *Limiter) getOrCreate(plate string) *entry {
@@ -68,9 +74,9 @@ func (l *Limiter) getOrCreate(plate string) *entry {
 		return e
 	}
 	e := &entry{
-		online:     rate.NewLimiter(rate.Limit(12.0/60.0), 20),
-		batchReq:   rate.NewLimiter(rate.Every(5*time.Second), 1),
-		batchCount: rate.NewLimiter(rate.Limit(500.0/30.0), 500),
+		online:     rate.NewLimiter(rate.Limit(onlineRate), onlineBurst),
+		batchReq:   rate.NewLimiter(rate.Every(batchReqInterval), 1),
+		batchCount: rate.NewLimiter(rate.Limit(batchRate), batchBurst),
 		lastSeen:   time.Now(),
 	}
 	l.entries[plate] = e
@@ -78,7 +84,7 @@ func (l *Limiter) getOrCreate(plate string) *entry {
 }
 
 func (l *Limiter) cleanupLoop(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -90,7 +96,7 @@ func (l *Limiter) cleanupLoop(ctx context.Context) {
 			l.mu.Lock()
 			now := time.Now()
 			for k, e := range l.entries {
-				if now.Sub(e.lastSeen) > 30*time.Minute {
+				if now.Sub(e.lastSeen) > entryTTL {
 					delete(l.entries, k)
 				}
 			}

@@ -19,13 +19,24 @@ SELECT create_hypertable('telemetry','received_at', chunk_time_interval => INTER
 
 CREATE INDEX IF NOT EXISTS telemetry_plate_received_at_idx ON telemetry (plate, received_at DESC);
 
--- Idempotency: guarantee end-to-end dedup for client_event_id even when received_at differs (retry with different timestamp).
--- Hypertable PK (client_event_id, received_at) alone allows duplicate client_event_id with different received_at.
--- This UNIQUE index on client_event_id enforces idempotency at DB layer: consumer uses INSERT ... ON CONFLICT DO NOTHING.
--- On single-node Timescale this is valid. For distributed hypertables, UNIQUE must include time column; in that case
--- rely on NATS JetStream DuplicateWindow (24h) + application-level dedup before insert.
--- psql \d telemetry should show this unique constraint.
-CREATE UNIQUE INDEX IF NOT EXISTS telemetry_client_event_id_uniq ON telemetry (client_event_id);
+-- Idempotency: TimescaleDB hypertable UNIQUE/PK must include partition column (received_at).
+-- A UNIQUE INDEX on (client_event_id) alone violates hypertable constraints and fails on create_hypertable.
+-- End-to-end dedup is enforced via:
+--   1) NATS JetStream DuplicateWindow 24h (DuplicateWindow + MsgId=client_event_id) for ingestion dedup, and
+--   2) DB-level dedup table telemetry_dedup (PK client_event_id) joined at insert time.
+-- This keeps hypertable PK (client_event_id, received_at) valid while guaranteeing global idempotency
+-- even when retry carries different received_at/occurred_at.
+-- psql \d telemetry should show PK (client_event_id, received_at); \d telemetry_dedup should show PK client_event_id.
+DROP INDEX IF EXISTS telemetry_client_event_id_uniq;
+
+CREATE TABLE IF NOT EXISTS telemetry_dedup (
+  client_event_id UUID PRIMARY KEY,
+  first_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Optional retention for dedup (not a hypertable): keep 30d via periodic DELETE or pg_cron.
+-- Example: DELETE FROM telemetry_dedup WHERE first_seen < now() - INTERVAL '30 days';
+-- Do not convert telemetry_dedup to hypertable; it is small and indexed by PK.
 
 -- GIST optional for SPEC-002: CREATE INDEX IF NOT EXISTS telemetry_geom_idx ON telemetry USING GIST (geom);
 -- Migrator should use pg_advisory_lock to serialize DDL; IF NOT EXISTS ensures idempotence.

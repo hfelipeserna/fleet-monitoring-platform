@@ -25,9 +25,9 @@ const (
 )
 
 type handler struct {
-	svc     *application.IngestService
-	breaker Breaker
-	js      JetStreamInfo
+	svc      *application.IngestService
+	breaker  Breaker
+	js       JetStreamInfo
 	inflight atomic.Int64
 }
 
@@ -64,7 +64,11 @@ func (h *handler) handleSingle(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := h.readBody(r, w)
 	if err != nil {
-		writeValidation(w)
+		if isMaxBytesError(err) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "payload_too_large"})
+		} else {
+			writeValidation(w)
+		}
 		return
 	}
 	var m map[string]json.RawMessage
@@ -95,7 +99,11 @@ func (h *handler) handleBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := h.readBody(r, w)
 	if err != nil {
-		writeValidation(w)
+		if isMaxBytesError(err) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "payload_too_large"})
+		} else {
+			writeValidation(w)
+		}
 		return
 	}
 	raws, err := decodeBatch(body)
@@ -281,6 +289,9 @@ func (h *handler) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	state := "closed"
 	if h.breaker != nil {
 		state = h.breaker.State()
+		if h.breaker.IsOpen() {
+			state = "open"
+		}
 	}
 	var used, max uint64
 	jet := "connected"
@@ -308,7 +319,7 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		used, max = h.js.Bytes()
 	}
 	state := 0
-	if h.breaker != nil && strings.EqualFold(h.breaker.State(), "open") {
+	if h.breaker != nil && h.breaker.IsOpen() {
 		state = 1
 	}
 	fmt.Fprintf(w, "# HELP ingest_inflight current ingest requests\n")

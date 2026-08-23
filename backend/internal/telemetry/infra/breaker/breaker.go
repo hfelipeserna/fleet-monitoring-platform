@@ -12,8 +12,16 @@ type Breaker struct {
 	cb *gobreaker.CircuitBreaker
 }
 
+const (
+	defaultBreakerRequests   = 10
+	defaultBreakerTimeout    = 30 * time.Second
+	defaultBreakerInterval   = 30 * time.Second
+	defaultFailureRatio      = 0.5
+	defaultRequestsThreshold = 10
+)
+
 func NewBreaker() *Breaker {
-	return NewBreakerWithSettings("telemetry-publish", 10, 30*time.Second, 0.5, 10)
+	return NewBreakerWithSettings("telemetry-publish", defaultBreakerRequests, defaultBreakerTimeout, defaultFailureRatio, defaultRequestsThreshold)
 }
 
 func NewBreakerWithSettings(name string, maxRequests uint32, timeout time.Duration, failureRatio float64, requestsThreshold uint32) *Breaker {
@@ -21,21 +29,21 @@ func NewBreakerWithSettings(name string, maxRequests uint32, timeout time.Durati
 		name = "telemetry-publish"
 	}
 	if maxRequests == 0 {
-		maxRequests = 10
+		maxRequests = defaultBreakerRequests
 	}
 	if timeout == 0 {
-		timeout = 30 * time.Second
+		timeout = defaultBreakerTimeout
 	}
 	if failureRatio <= 0 || failureRatio > 1 {
-		failureRatio = 0.5
+		failureRatio = defaultFailureRatio
 	}
 	if requestsThreshold == 0 {
-		requestsThreshold = 10
+		requestsThreshold = defaultRequestsThreshold
 	}
 	st := gobreaker.Settings{
 		Name:        name,
 		MaxRequests: maxRequests,
-		Interval:    30 * time.Second,
+		Interval:    defaultBreakerInterval,
 		Timeout:     timeout,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			if counts.Requests < requestsThreshold {
@@ -64,8 +72,28 @@ func (b *Breaker) IsOpen() bool {
 	return b.cb.State() == gobreaker.StateOpen
 }
 
+// IsOpenBreaker is a nil-safe helper that reports whether b is open.
+// Centralized to avoid duplicated isBreakerOpen helpers across adapters/application.
+func IsOpenBreaker(b *Breaker) bool {
+	if b == nil {
+		return false
+	}
+	return b.IsOpen()
+}
+
+// IsOpen reports whether any Breaker implementation is open, nil-safe with fallback to State() string compare.
+func IsOpen(b interface {
+	State() string
+	IsOpen() bool
+}) bool {
+	if b == nil {
+		return false
+	}
+	return b.IsOpen()
+}
+
 func (b *Breaker) Allow() error {
-	if b.cb.State() == gobreaker.StateOpen {
+	if b.IsOpen() {
 		return fmt.Errorf("circuit breaker open: %w", gobreaker.ErrOpenState)
 	}
 	return nil

@@ -7,7 +7,7 @@ import (
 	telemetry "fleetmonitoring/backend/internal/telemetry/domain"
 )
 
-func floatPtr(v float64) *float64 { return &v }
+func floatPtr(v float64) *float64    { return &v }
 func timePtr(v time.Time) *time.Time { return &v }
 
 func validEvent() telemetry.TelemetryEvent {

@@ -21,8 +21,6 @@ import (
 // Errors expected to be wrapped: ErrValidation -> 400, ErrRateLimited -> 429, ErrBackpressure -> 503
 // If production uses different names, update these tests together with code and keep Covers tags.
 
-
-
 // fakes
 type fakePublisherApp struct {
 	publishErr      error
@@ -61,7 +59,10 @@ type fakeLimiterApp struct {
 	allow      bool
 	allowBatch bool
 	calls      []string
-	batchCalls []struct{ plate string; n int }
+	batchCalls []struct {
+		plate string
+		n     int
+	}
 }
 
 func (f *fakeLimiterApp) Allow(plate string) bool {
@@ -69,7 +70,10 @@ func (f *fakeLimiterApp) Allow(plate string) bool {
 	return f.allow
 }
 func (f *fakeLimiterApp) AllowBatch(plate string, n int) bool {
-	f.batchCalls = append(f.batchCalls, struct{ plate string; n int }{plate, n})
+	f.batchCalls = append(f.batchCalls, struct {
+		plate string
+		n     int
+	}{plate, n})
 	return f.allowBatch
 }
 
@@ -79,6 +83,7 @@ type fakeBreakerApp struct {
 }
 
 func (f *fakeBreakerApp) State() string { return f.state }
+func (f *fakeBreakerApp) IsOpen() bool  { return f.state == "open" }
 func (f *fakeBreakerApp) Allow() error  { return f.err }
 
 type fakeJSApp struct {
@@ -88,8 +93,8 @@ type fakeJSApp struct {
 
 func (f *fakeJSApp) Bytes() (uint64, uint64) { return f.used, f.max }
 
-func intPtr(v int) *int             { return &v }
-func floatPtr(v float64) *float64   { return &v }
+func intPtr(v int) *int              { return &v }
+func floatPtr(v float64) *float64    { return &v }
 func timePtr(v time.Time) *time.Time { return &v }
 
 // helper to build service

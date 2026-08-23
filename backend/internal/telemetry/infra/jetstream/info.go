@@ -8,12 +8,20 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+const (
+	// DefaultMaxBytes is the fallback JetStream MaxBytes (5 GiB) used when
+	// StreamInfo reports MaxBytes == 0 (unlimited).
+	DefaultMaxBytes = 5 << 30
+	// defaultJetStreamMaxBytes is internal alias for DefaultMaxBytes.
+	defaultJetStreamMaxBytes = DefaultMaxBytes
+)
+
 type Info struct {
-	js         nats.JetStreamContext
-	streamName string
-	mu         sync.Mutex
-	lastBytes  uint64
-	lastMax    uint64
+	js          nats.JetStreamContext
+	streamName  string
+	mu          sync.Mutex
+	lastBytes   uint64
+	lastMax     uint64
 	lastFetched time.Time
 }
 
@@ -44,7 +52,7 @@ func (i *Info) Bytes() (uint64, uint64) {
 	used := info.State.Bytes
 	max := uint64(info.Config.MaxBytes)
 	if max == 0 {
-		max = 5 * 1024 * 1024 * 1024
+		max = defaultJetStreamMaxBytes
 	}
 	i.lastBytes = used
 	i.lastMax = max
