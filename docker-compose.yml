@@ -35,6 +35,19 @@ services:
       retries: 10
       start_period: 5s
 
+  # prometheus-nats-exporter: mapea tarea args --httpAddr=0.0.0.0:7777 --varz=http://nats:8222 -> flags reales -addr/-port/-varz + URL posicional
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.13.0
+    command: ["-varz", "http://nats:8222", "-addr", "0.0.0.0", "-port", "7777"]
+    ports:
+      - "127.0.0.1:7777:7777"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     environment:

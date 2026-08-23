@@ -4,16 +4,28 @@ info:
   version: 0.1.0
   description: |
     Write edge de ingesta. Semántica async: 202 Accepted = aceptado y retenido durable en NATS JetStream TELEMETRY (subject telemetry.raw.{plate}, Nats-Msg-Id=client_event_id), pendiente de persistencia por consumer en TimescaleDB. No implica persistencia en DB. Placa colombiana ^[A-Z]{3}[0-9]{3}$ (GTP890). Revisión 2026-08-23: placa estable, speed int, lat/lon nullable, sin fuel, received_at server time, sin región.
+  license:
+    name: Proprietary
+    identifier: UNLICENSED
 servers:
   - url: http://localhost:8080
     description: local via LB
   - url: http://ingest:8080
     description: direct ingest
+security: []
+tags:
+  - name: telemetry
+    description: Ingest operations
+  - name: ops
+    description: Operational probes
 paths:
   /v1/telemetry:
     post:
       summary: Ingest single telemetry event (online de a 1)
       operationId: ingestTelemetry
+      tags:
+        - telemetry
+      security: []
       requestBody:
         required: true
         content:
@@ -42,6 +54,9 @@ paths:
       summary: Ingest batch (offline-first, 1-500 events, 1MB max, ej. 245 al reconectar)
       description: Mobile offline-first acumula 1-500 (no fijo 100). Jitter 0-60s + backoff en cliente. Online usa /v1/telemetry de a 1.
       operationId: ingestTelemetryBatch
+      tags:
+        - telemetry
+      security: []
       requestBody:
         required: true
         content:
@@ -80,6 +95,9 @@ paths:
     get:
       summary: Health + breaker state
       operationId: healthz
+      tags:
+        - ops
+      security: []
       responses:
         '200':
           description: Healthy
@@ -101,6 +119,9 @@ paths:
     get:
       summary: Prometheus metrics
       operationId: metrics
+      tags:
+        - ops
+      security: []
       responses:
         '200':
           description: Prometheus exposition
@@ -109,6 +130,12 @@ paths:
               schema:
                 type: string
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Placeholder - auth no requerida en MVP (public API, security: []), reservado para futuro"
   schemas:
     TelemetryEvent:
       type: object

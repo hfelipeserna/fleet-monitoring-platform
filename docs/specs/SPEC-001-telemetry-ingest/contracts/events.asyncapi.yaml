@@ -6,8 +6,7 @@ info:
     Backbone NATS JetStream. Stream TELEMETRY durable, replay, at-least-once. Placa colombiana como ID estable (^[A-Z]{3}[0-9]{3}$), no device_id. Idempotencia via client_event_id (Nats-Msg-Id) + ON CONFLICT DO NOTHING en DB. 202 Accepted en HTTP = retained durable, no DB yet. Subject sin región para MVP (telemetry.raw.{plate}). DLQ reintentable.
 servers:
   nats:
-    host: nats
-    port: 4222
+    host: nats:4222
     protocol: nats
     description: NATS JetStream (local docker)
 channels:
@@ -93,4 +92,20 @@ components:
       description: Headers mapped to NATS headers
   servers:
     jetStream:
-      description: Stream TELEMETRY storage=file retention=limits discard=old max_age 24h dev / 72h prod max_bytes 5GB dev / 50-100GB prod, replicas 1 dev / 3 prod, DLQ reintentable
+      host: nats:4222
+      protocol: nats
+      description: Stream TELEMETRY - config detallada en x-stream-config
+      x-stream-config:
+        name: TELEMETRY
+        subjects:
+          - telemetry.raw.>
+        storage: file
+        retention: limits
+        discard: old
+        maxAge: 24h dev / 72h prod
+        maxBytes: 5GB dev / 50-100GB prod
+        replicas: 1 dev / 3 prod
+        dlq:
+          subject: telemetry.dlq
+          maxDeliver: 3
+          reintentable: true
