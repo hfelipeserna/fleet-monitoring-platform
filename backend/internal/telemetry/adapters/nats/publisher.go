@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -12,16 +13,28 @@ import (
 	"fleetmonitoring/backend/internal/telemetry/domain"
 )
 
+const defaultPublishTimeout = 3 * time.Second
+
+type breakerRecorder interface {
+	RecordSuccess()
+	RecordFailure()
+}
+
 type Publisher struct {
 	js      nats.JetStreamContext
 	timeout time.Duration
+	breaker breakerRecorder
 }
 
 func NewPublisher(js nats.JetStreamContext, timeout time.Duration) *Publisher {
+	return NewPublisherWithBreaker(js, timeout, nil)
+}
+
+func NewPublisherWithBreaker(js nats.JetStreamContext, timeout time.Duration, brk breakerRecorder) *Publisher {
 	if timeout == 0 {
-		timeout = 3 * time.Second
+		timeout = defaultPublishTimeout
 	}
-	return &Publisher{js: js, timeout: timeout}
+	return &Publisher{js: js, timeout: timeout, breaker: brk}
 }
 
 func (p *Publisher) Publish(ctx context.Context, evt domain.TelemetryEvent) error {
@@ -32,30 +45,51 @@ func (p *Publisher) Publish(ctx context.Context, evt domain.TelemetryEvent) erro
 	subject := fmt.Sprintf("telemetry.raw.%s", evt.Plate)
 	f, err := p.js.PublishAsync(subject, data, nats.MsgId(evt.ClientEventID))
 	if err != nil {
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		if isBackpressure(err) {
 			return fmt.Errorf("publish async backpressure: %w", errors.Join(application.ErrBackpressure, err))
 		}
 		return fmt.Errorf("publish async: %w", err)
 	}
+	timer := time.NewTimer(p.timeout)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		return fmt.Errorf("publish context canceled: %w", errors.Join(application.ErrBackpressure, ctx.Err()))
-	case <-time.After(p.timeout):
+	case <-timer.C:
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		return fmt.Errorf("publish timeout after %v: %w", p.timeout, application.ErrBackpressure)
 	case ack := <-f.Ok():
 		if ack == nil {
+			if p.breaker != nil {
+				p.breaker.RecordFailure()
+			}
 			return fmt.Errorf("publish ack nil: %w", application.ErrBackpressure)
+		}
+		if p.breaker != nil {
+			p.breaker.RecordSuccess()
 		}
 		return nil
 	case errCh := <-f.Err():
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		if errCh != nil {
 			if isBackpressure(errCh) {
 				return fmt.Errorf("publish ack error backpressure: %w", errors.Join(application.ErrBackpressure, errCh))
 			}
 			return fmt.Errorf("publish ack error: %w", errCh)
 		}
-		return nil
-	case <-p.js.PublishAsyncComplete():
+		if p.breaker != nil {
+			p.breaker.RecordSuccess()
+		}
 		return nil
 	}
 }
@@ -76,6 +110,9 @@ func (p *Publisher) PublishBatch(ctx context.Context, evts []domain.TelemetryEve
 		subject := fmt.Sprintf("telemetry.raw.%s", evt.Plate)
 		f, err := p.js.PublishAsync(subject, data, nats.MsgId(evt.ClientEventID))
 		if err != nil {
+			if p.breaker != nil {
+				p.breaker.RecordFailure()
+			}
 			if isBackpressure(err) {
 				return fmt.Errorf("publish batch async backpressure: %w", errors.Join(application.ErrBackpressure, err))
 			}
@@ -87,21 +124,69 @@ func (p *Publisher) PublishBatch(ctx context.Context, evts []domain.TelemetryEve
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		return fmt.Errorf("publish batch context canceled: %w", errors.Join(application.ErrBackpressure, ctx.Err()))
 	case <-timer.C:
+		if p.breaker != nil {
+			p.breaker.RecordFailure()
+		}
 		return fmt.Errorf("publish batch timeout after %v: %w", p.timeout, application.ErrBackpressure)
 	case <-p.js.PublishAsyncComplete():
 		for _, pf := range pendingFuts {
 			select {
+			case ack := <-pf.fut.Ok():
+				if ack == nil {
+					if p.breaker != nil {
+						p.breaker.RecordFailure()
+					}
+					return fmt.Errorf("publish batch ack nil: %w", application.ErrBackpressure)
+				}
 			case err := <-pf.fut.Err():
 				if err != nil {
+					if p.breaker != nil {
+						p.breaker.RecordFailure()
+					}
 					if isBackpressure(err) {
 						return fmt.Errorf("publish batch ack backpressure: %w", errors.Join(application.ErrBackpressure, err))
 					}
 					return fmt.Errorf("publish batch ack error: %w", err)
 				}
 			default:
+				select {
+				case ack := <-pf.fut.Ok():
+					if ack == nil {
+						if p.breaker != nil {
+							p.breaker.RecordFailure()
+						}
+						return fmt.Errorf("publish batch ack nil: %w", application.ErrBackpressure)
+					}
+				case err := <-pf.fut.Err():
+					if err != nil {
+						if p.breaker != nil {
+							p.breaker.RecordFailure()
+						}
+						if isBackpressure(err) {
+							return fmt.Errorf("publish batch ack backpressure: %w", errors.Join(application.ErrBackpressure, err))
+						}
+						return fmt.Errorf("publish batch ack error: %w", err)
+					}
+				case <-timer.C:
+					if p.breaker != nil {
+						p.breaker.RecordFailure()
+					}
+					return fmt.Errorf("publish batch timeout waiting ack: %w", application.ErrBackpressure)
+				case <-ctx.Done():
+					if p.breaker != nil {
+						p.breaker.RecordFailure()
+					}
+					return fmt.Errorf("publish batch context canceled waiting ack: %w", errors.Join(application.ErrBackpressure, ctx.Err()))
+				}
 			}
+		}
+		if p.breaker != nil {
+			p.breaker.RecordSuccess()
 		}
 		return nil
 	}
@@ -126,26 +211,6 @@ func isBackpressure(err error) bool {
 	if err == nil {
 		return false
 	}
-	s := err.Error()
-	lower := ""
-	for _, c := range s {
-		if c >= 'A' && c <= 'Z' {
-			lower += string(c - 'A' + 'a')
-		} else {
-			lower += string(c)
-		}
-	}
-	return contains(lower, "backpressure") || contains(lower, "max_pending") || contains(lower, "max pending") || contains(lower, "pending exceeded") || contains(lower, "too many")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || containsSlow(s, substr))
-}
-func containsSlow(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "backpressure") || strings.Contains(s, "max_pending") || strings.Contains(s, "max pending") || strings.Contains(s, "pending exceeded") || strings.Contains(s, "too many")
 }

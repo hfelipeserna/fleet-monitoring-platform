@@ -1,6 +1,7 @@
 package rate
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -17,12 +18,25 @@ type entry struct {
 type Limiter struct {
 	mu      sync.Mutex
 	entries map[string]*entry
+	stopCh  chan struct{}
+	once    sync.Once
 }
 
 func NewLimiter() *Limiter {
-	l := &Limiter{entries: make(map[string]*entry)}
-	go l.cleanupLoop()
+	return NewLimiterWithContext(context.Background())
+}
+
+func NewLimiterWithContext(ctx context.Context) *Limiter {
+	l := &Limiter{
+		entries: make(map[string]*entry),
+		stopCh:  make(chan struct{}),
+	}
+	go l.cleanupLoop(ctx)
 	return l
+}
+
+func (l *Limiter) Stop() {
+	l.once.Do(func() { close(l.stopCh) })
 }
 
 func (l *Limiter) Allow(plate string) bool {
@@ -63,17 +77,24 @@ func (l *Limiter) getOrCreate(plate string) *entry {
 	return e
 }
 
-func (l *Limiter) cleanupLoop() {
+func (l *Limiter) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		l.mu.Lock()
-		now := time.Now()
-		for k, e := range l.entries {
-			if now.Sub(e.lastSeen) > 30*time.Minute {
-				delete(l.entries, k)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-l.stopCh:
+			return
+		case <-ticker.C:
+			l.mu.Lock()
+			now := time.Now()
+			for k, e := range l.entries {
+				if now.Sub(e.lastSeen) > 30*time.Minute {
+					delete(l.entries, k)
+				}
 			}
+			l.mu.Unlock()
 		}
-		l.mu.Unlock()
 	}
 }

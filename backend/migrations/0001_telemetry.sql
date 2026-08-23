@@ -19,6 +19,14 @@ SELECT create_hypertable('telemetry','received_at', chunk_time_interval => INTER
 
 CREATE INDEX IF NOT EXISTS telemetry_plate_received_at_idx ON telemetry (plate, received_at DESC);
 
+-- Idempotency: guarantee end-to-end dedup for client_event_id even when received_at differs (retry with different timestamp).
+-- Hypertable PK (client_event_id, received_at) alone allows duplicate client_event_id with different received_at.
+-- This UNIQUE index on client_event_id enforces idempotency at DB layer: consumer uses INSERT ... ON CONFLICT DO NOTHING.
+-- On single-node Timescale this is valid. For distributed hypertables, UNIQUE must include time column; in that case
+-- rely on NATS JetStream DuplicateWindow (24h) + application-level dedup before insert.
+-- psql \d telemetry should show this unique constraint.
+CREATE UNIQUE INDEX IF NOT EXISTS telemetry_client_event_id_uniq ON telemetry (client_event_id);
+
 -- GIST optional for SPEC-002: CREATE INDEX IF NOT EXISTS telemetry_geom_idx ON telemetry USING GIST (geom);
 -- Migrator should use pg_advisory_lock to serialize DDL; IF NOT EXISTS ensures idempotence.
 -- CopyFrom must send only lat/lon (geom is GENERATED).

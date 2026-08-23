@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -23,24 +24,35 @@ func main() {
 
 	natsURL := envOr("NATS_URL", "nats://localhost:4222")
 	httpPort := envOr("HTTP_PORT", "8080")
+	natsMaxPending := envOrInt("NATS_MAX_PENDING", 1024)
+	jetstreamMaxBytes := envOrInt64("JETSTREAM_MAX_BYTES", 5*1024*1024*1024)
+	publishTimeout := envOrDuration("PUBLISH_TIMEOUT", 3*time.Second)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	nc, err := nats.Connect(natsURL, nats.MaxReconnects(-1))
 	if err != nil {
 		slog.Error("nats connect failed", "error", err, "url", natsURL)
-		os.Exit(1)
+		return
 	}
-	defer nc.Drain()
+	defer func() {
+		if err := nc.Drain(); err != nil {
+			slog.Error("nats drain failed", "error", err)
+		}
+	}()
 
-	js, err := nc.JetStream(nats.PublishAsyncMaxPending(1024))
+	js, err := nc.JetStream(nats.PublishAsyncMaxPending(natsMaxPending))
 	if err != nil {
 		slog.Error("jetstream context failed", "error", err)
-		os.Exit(1)
+		return
 	}
-	ensureStream(js)
+	ensureStream(js, jetstreamMaxBytes)
 
-	pub := natsadapter.NewPublisher(js, 3*time.Second)
-	limiter := rate.NewLimiter()
 	brk := breaker.NewBreaker()
+	pub := natsadapter.NewPublisherWithBreaker(js, publishTimeout, brk)
+	limiter := rate.NewLimiterWithContext(ctx)
+	defer limiter.Stop()
 	jsInfo := jetstream.NewInfo(js, "TELEMETRY")
 
 	handler := httpadapter.NewHandler(pub, limiter, brk, jsInfo)
@@ -53,14 +65,11 @@ func main() {
 		IdleTimeout:  30 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	go func() {
-		slog.Info("ingest listening", "port", httpPort, "nats", natsURL)
+		slog.Info("ingest listening", "port", httpPort, "nats", natsURL, "max_pending", natsMaxPending, "max_bytes", jetstreamMaxBytes, "publish_timeout", publishTimeout)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http serve failed", "error", err)
-			os.Exit(1)
+			stop()
 		}
 	}()
 
@@ -74,19 +83,20 @@ func main() {
 	slog.Info("ingest stopped")
 }
 
-func ensureStream(js nats.JetStreamContext) {
+func ensureStream(js nats.JetStreamContext, maxBytes int64) {
 	_, err := js.StreamInfo("TELEMETRY")
 	if err == nil {
 		return
 	}
 	_, err = js.AddStream(&nats.StreamConfig{
-		Name:      "TELEMETRY",
-		Subjects:  []string{"telemetry.raw.>"},
-		Storage:   nats.FileStorage,
-		Retention: nats.LimitsPolicy,
-		Discard:   nats.DiscardOld,
-		MaxAge:    24 * time.Hour,
-		MaxBytes:  5 * 1024 * 1024 * 1024,
+		Name:       "TELEMETRY",
+		Subjects:   []string{"telemetry.raw.>"},
+		Storage:    nats.FileStorage,
+		Retention:  nats.LimitsPolicy,
+		Discard:    nats.DiscardOld,
+		MaxAge:     24 * time.Hour,
+		MaxBytes:   maxBytes,
+		Duplicates: 24 * time.Hour,
 	})
 	if err != nil {
 		slog.Warn("ensure stream failed", "error", err)
@@ -98,4 +108,43 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envOrInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid env int, using default", "key", key, "value", v, "default", def, "error", err)
+		return def
+	}
+	return n
+}
+
+func envOrInt64(key string, def int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		slog.Warn("invalid env int64, using default", "key", key, "value", v, "default", def, "error", err)
+		return def
+	}
+	return n
+}
+
+func envOrDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid env duration, using default", "key", key, "value", v, "default", def, "error", err)
+		return def
+	}
+	return d
 }

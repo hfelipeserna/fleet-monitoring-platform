@@ -19,6 +19,11 @@ type RateLimiter = application.RateLimiter
 type Breaker = application.Breaker
 type JetStreamInfo = application.JetStreamInfo
 
+const (
+	maxBodyBytes = 1 << 20
+	retryAfter   = "5"
+)
+
 type handler struct {
 	svc     *application.IngestService
 	breaker Breaker
@@ -28,8 +33,11 @@ type handler struct {
 
 func NewHandler(pub Publisher, limiter RateLimiter, breaker Breaker, js JetStreamInfo) http.Handler {
 	svc := application.NewIngestService(pub, limiter, breaker, js, func() time.Time { return time.Now().UTC() })
-	h := &handler{svc: svc, breaker: breaker, js: js}
-	return h
+	return NewHandlerWithService(svc, breaker, js)
+}
+
+func NewHandlerWithService(svc *application.IngestService, breaker Breaker, js JetStreamInfo) http.Handler {
+	return &handler{svc: svc, breaker: breaker, js: js}
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,112 +62,20 @@ func (h *handler) handleSingle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	defer r.Body.Close()
-	body, err := io.ReadAll(r.Body)
+	body, err := h.readBody(r, w)
 	if err != nil {
-		if isMaxBytesError(err) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
 	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(body, &m); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
 	}
-	plateRaw, ok := m["plate"]
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	speedRaw, ok := m["speed"]
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	var plate string
-	if err := json.Unmarshal(plateRaw, &plate); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	speedInt, err := parseSpeedInt(speedRaw)
+	raw, err := decodeSingleEvent(m)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
-	}
-	var latPtr *float64
-	if v, ok := m["lat"]; ok {
-		trim := strings.TrimSpace(string(v))
-		if trim == "null" {
-			latPtr = nil
-		} else {
-			var f float64
-			if err := json.Unmarshal(v, &f); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-				return
-			}
-			latPtr = &f
-		}
-	}
-	var lonPtr *float64
-	if v, ok := m["lon"]; ok {
-		trim := strings.TrimSpace(string(v))
-		if trim == "null" {
-			lonPtr = nil
-		} else {
-			var f float64
-			if err := json.Unmarshal(v, &f); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-				return
-			}
-			lonPtr = &f
-		}
-	}
-	var cid string
-	if v, ok := m["client_event_id"]; ok {
-		trim := strings.TrimSpace(string(v))
-		if trim != "null" && trim != "" {
-			if err := json.Unmarshal(v, &cid); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-				return
-			}
-		}
-	}
-	var occ *time.Time
-	if v, ok := m["occurred_at"]; ok {
-		trim := strings.TrimSpace(string(v))
-		if trim != "null" && trim != "" {
-			var s string
-			if err := json.Unmarshal(v, &s); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-				return
-			}
-			tm, err := time.Parse(time.RFC3339Nano, s)
-			if err != nil {
-				tm2, err2 := time.Parse(time.RFC3339, s)
-				if err2 != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-					return
-				}
-				tm = tm2
-			}
-			occ = &tm
-		}
-	}
-	raw := application.RawEvent{
-		Plate:         plate,
-		Speed:         &speedInt,
-		Lat:           latPtr,
-		Lon:           lonPtr,
-		ClientEventID: cid,
-		OccurredAt:    occ,
 	}
 	evt, err := h.svc.IngestSingle(r.Context(), raw)
 	if err != nil {
@@ -177,134 +93,15 @@ func (h *handler) handleBatch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	defer r.Body.Close()
-	body, err := io.ReadAll(r.Body)
+	body, err := h.readBody(r, w)
 	if err != nil {
-		if isMaxBytesError(err) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
 	}
-	if len(body) > 1<<20 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+	raws, err := decodeBatch(body)
+	if err != nil {
+		writeValidation(w)
 		return
-	}
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(body, &top); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	eventsRaw, ok := top["events"]
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	var rawMessages []json.RawMessage
-	if err := json.Unmarshal(eventsRaw, &rawMessages); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	if len(rawMessages) == 0 || len(rawMessages) > 500 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-		return
-	}
-	raws := make([]application.RawEvent, 0, len(rawMessages))
-	for _, eb := range rawMessages {
-		var m map[string]json.RawMessage
-		if err := json.Unmarshal(eb, &m); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		plateRaw, ok := m["plate"]
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		speedRaw, ok := m["speed"]
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		var plate string
-		if err := json.Unmarshal(plateRaw, &plate); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		speedInt, err := parseSpeedInt(speedRaw)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-			return
-		}
-		var latPtr *float64
-		if v, ok := m["lat"]; ok {
-			trim := strings.TrimSpace(string(v))
-			if trim == "null" {
-				latPtr = nil
-			} else {
-				var f float64
-				if err := json.Unmarshal(v, &f); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-					return
-				}
-				latPtr = &f
-			}
-		}
-		var lonPtr *float64
-		if v, ok := m["lon"]; ok {
-			trim := strings.TrimSpace(string(v))
-			if trim == "null" {
-				lonPtr = nil
-			} else {
-				var f float64
-				if err := json.Unmarshal(v, &f); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-					return
-				}
-				lonPtr = &f
-			}
-		}
-		var cid string
-		if v, ok := m["client_event_id"]; ok {
-			trim := strings.TrimSpace(string(v))
-			if trim != "null" && trim != "" {
-				if err := json.Unmarshal(v, &cid); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-					return
-				}
-			}
-		}
-		var occ *time.Time
-		if v, ok := m["occurred_at"]; ok {
-			trim := strings.TrimSpace(string(v))
-			if trim != "null" && trim != "" {
-				var s string
-				if err := json.Unmarshal(v, &s); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-					return
-				}
-				tm, err := time.Parse(time.RFC3339Nano, s)
-				if err != nil {
-					tm2, err2 := time.Parse(time.RFC3339, s)
-					if err2 != nil {
-						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
-						return
-					}
-					tm = tm2
-				}
-				occ = &tm
-			}
-		}
-		raws = append(raws, application.RawEvent{
-			Plate:         plate,
-			Speed:         &speedInt,
-			Lat:           latPtr,
-			Lon:           lonPtr,
-			ClientEventID: cid,
-			OccurredAt:    occ,
-		})
 	}
 	evts, err := h.svc.IngestBatch(r.Context(), raws)
 	if err != nil {
@@ -315,6 +112,165 @@ func (h *handler) handleBatch(w http.ResponseWriter, r *http.Request) {
 		slog.Info("ingest batch", "plate", evts[0].Plate, "count", len(evts))
 	}
 	writeJSON(w, http.StatusAccepted, map[string]int{"accepted": len(evts)})
+}
+
+func (h *handler) readBody(r *http.Request, w http.ResponseWriter) ([]byte, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("empty body: %w", application.ErrValidation)
+	}
+	return body, nil
+}
+
+func decodeSingleEvent(m map[string]json.RawMessage) (application.RawEvent, error) {
+	plate, speedInt, err := decodeRequiredFields(m)
+	if err != nil {
+		return application.RawEvent{}, err
+	}
+	latPtr, err := parseOptionalFloat(m, "lat")
+	if err != nil {
+		return application.RawEvent{}, err
+	}
+	lonPtr, err := parseOptionalFloat(m, "lon")
+	if err != nil {
+		return application.RawEvent{}, err
+	}
+	cid, err := parseOptionalString(m, "client_event_id")
+	if err != nil {
+		return application.RawEvent{}, err
+	}
+	occ, err := parseOccurredAt(m)
+	if err != nil {
+		return application.RawEvent{}, err
+	}
+	return application.RawEvent{
+		Plate:         plate,
+		Speed:         &speedInt,
+		Lat:           latPtr,
+		Lon:           lonPtr,
+		ClientEventID: cid,
+		OccurredAt:    occ,
+	}, nil
+}
+
+func decodeRequiredFields(m map[string]json.RawMessage) (string, int, error) {
+	plateRaw, err := getRequiredRaw(m, "plate")
+	if err != nil {
+		return "", 0, err
+	}
+	var plate string
+	if err := json.Unmarshal(plateRaw, &plate); err != nil {
+		return "", 0, fmt.Errorf("invalid plate: %w", err)
+	}
+	speedRaw, err := getRequiredRaw(m, "speed")
+	if err != nil {
+		return "", 0, err
+	}
+	speedInt, err := parseSpeedInt(speedRaw)
+	if err != nil {
+		return "", 0, err
+	}
+	return plate, speedInt, nil
+}
+
+func getRequiredRaw(m map[string]json.RawMessage, key string) (json.RawMessage, error) {
+	raw, ok := m[key]
+	if !ok {
+		return nil, fmt.Errorf("missing %s: %w", key, application.ErrValidation)
+	}
+	return raw, nil
+}
+
+func parseOptionalFloat(m map[string]json.RawMessage, key string) (*float64, error) {
+	raw, ok := m[key]
+	if !ok {
+		return nil, nil
+	}
+	trim := strings.TrimSpace(string(raw))
+	if trim == "null" {
+		return nil, nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", key, err)
+	}
+	return &f, nil
+}
+
+func parseOptionalString(m map[string]json.RawMessage, key string) (string, error) {
+	raw, ok := m[key]
+	if !ok {
+		return "", nil
+	}
+	trim := strings.TrimSpace(string(raw))
+	if trim == "null" || trim == "" {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", fmt.Errorf("invalid %s: %w", key, err)
+	}
+	return s, nil
+}
+
+func parseOccurredAt(m map[string]json.RawMessage) (*time.Time, error) {
+	raw, ok := m["occurred_at"]
+	if !ok {
+		return nil, nil
+	}
+	trim := strings.TrimSpace(string(raw))
+	if trim == "null" || trim == "" {
+		return nil, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, fmt.Errorf("invalid occurred_at: %w", err)
+	}
+	tm, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		tm2, err2 := time.Parse(time.RFC3339, s)
+		if err2 != nil {
+			return nil, fmt.Errorf("invalid occurred_at format: %w", err)
+		}
+		tm = tm2
+	}
+	return &tm, nil
+}
+
+func decodeBatch(body []byte) ([]application.RawEvent, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(body, &top); err != nil {
+		return nil, fmt.Errorf("invalid json: %w", err)
+	}
+	eventsRaw, ok := top["events"]
+	if !ok {
+		return nil, fmt.Errorf("missing events: %w", application.ErrValidation)
+	}
+	var rawMessages []json.RawMessage
+	if err := json.Unmarshal(eventsRaw, &rawMessages); err != nil {
+		return nil, fmt.Errorf("invalid events: %w", err)
+	}
+	if len(rawMessages) == 0 || len(rawMessages) > application.MaxBatchSize {
+		return nil, fmt.Errorf("invalid batch size %d: %w", len(rawMessages), application.ErrValidation)
+	}
+	raws := make([]application.RawEvent, 0, len(rawMessages))
+	for i, eb := range rawMessages {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(eb, &m); err != nil {
+			return nil, fmt.Errorf("invalid event %d: %w", i, err)
+		}
+		raw, err := decodeSingleEvent(m)
+		if err != nil {
+			return nil, fmt.Errorf("event %d: %w", i, err)
+		}
+		raws = append(raws, raw)
+	}
+	return raws, nil
 }
 
 func (h *handler) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -374,31 +330,35 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 func mapServiceError(w http.ResponseWriter, err error) {
 	if errors.Is(err, application.ErrValidation) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
 	}
 	if errors.Is(err, application.ErrRateLimited) {
-		w.Header().Set("Retry-After", "5")
+		w.Header().Set("Retry-After", retryAfter)
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate_limited"})
 		return
 	}
 	if errors.Is(err, application.ErrBackpressure) {
-		w.Header().Set("Retry-After", "5")
+		w.Header().Set("Retry-After", retryAfter)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "backpressure"})
 		return
 	}
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "validation") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
+		writeValidation(w)
 		return
 	}
 	if strings.Contains(msg, "rate") {
-		w.Header().Set("Retry-After", "5")
+		w.Header().Set("Retry-After", retryAfter)
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate_limited"})
 		return
 	}
-	w.Header().Set("Retry-After", "5")
+	w.Header().Set("Retry-After", retryAfter)
 	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "backpressure"})
+}
+
+func writeValidation(w http.ResponseWriter) {
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validation"})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
