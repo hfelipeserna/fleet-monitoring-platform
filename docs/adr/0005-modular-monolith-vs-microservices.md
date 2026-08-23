@@ -46,14 +46,14 @@ Restricción dura: máquina dev macOS Intel con 16 GB RAM; orquestación local D
 |---|---|---|
 | **Microservicios clásicos** (N servicios con APIs propias, repos/despliegues/contratos independientes) | Descartada | Cada bin opera al 0,3-2 % del cuello de botella real (broker/disco): añadiría malla RPC, versionado de contratos entre servicios, tracing distribuido y N× overhead operativo **sin beneficio medible**; rompe la restricción operativa de 16 GB dev |
 | **Un solo proceso que lo haga todo** (monolito de proceso único, 1 bin) | Descartada | El consumer (disco-bound) y el agent (latencia LLM variable, segundos) compartirían runtime con el SSE de lectura: un pico de GC del agent penalizaría las latencias del portal. Los 4 bins dan aislamiento real de recursos sin pagar el coste de microservicios |
-| **Serverless/functions para la ingesta** | Descartada | Pierde el control de backpressure exigido (PublishAsyncComplete antes del 200 al dispositivo, ADR-0001 cond. 3); latencia/coste variables |
+| **Serverless/functions para la ingesta** | Descartada | Pierde el control de backpressure exigido (PublishAsyncComplete antes del 202 al dispositivo, ADR-0001 cond. 3 enmendada 2026-08-23); latencia/coste variables |
 
 ## Condiciones obligatorias
 
 1. **Breaker + timeout en TODA E/S de red** de cada bin (tabla anterior). Prohibido invocar una dependencia de red sin ambos.
 2. **Umbrales numéricos por dependencia, documentados en código/config**: p. ej. DB abre con ≥50 % de errores en ventana de 30 s o timeout >1 s sostenido; half-open tras 30 s con probe. Un breaker sin números calibrados es decorativo y se rechaza en review.
 3. **Estados del breaker observables**: cambio de estado registrado (log métrico) y expuesto en `/healthz`/métricas Prometheus. Prohibido fallar en silencio.
-4. **El write path nunca se bloquea por el read path ni por el LLM**: `ingest` depende exclusivamente de JetStream. Si DB, consumer o LLM caen, la ingesta sigue respondiendo 200 y el backlog se drena después. Todo refactor que introduzca una dependencia síncrona `ingest`→DB o `ingest`→LLM viola este ADR.
+4. **El write path nunca se bloquea por el read path ni por el LLM**: `ingest` depende exclusivamente de JetStream. Si DB, consumer o LLM caen, la ingesta sigue respondiendo `202 Accepted` (enmienda 2026-08-23: antes `200`, corregido a semántica async) y el backlog se drena después. Todo refactor que introduzca una dependencia síncrona `ingest`→DB o `ingest`→LLM viola este ADR.
 5. **Umbral de extracción a servicios separados** (extiende ADR-0001 cond. 7): >10.000 msg/s o >50.000 dispositivos → extraer/shardear el consumer (streams por shard + workers por `device_id`). Extraer el `agent` como servicio propio si su RSS supera 500 MB sostenidos o su cola de chat acumula >1.000 req pendientes. Hasta esos umbrales: réplicas de bins completos, nunca fragmentación de dominios.
 6. **Enforcement de límites entre BCs en CI** (depguard/arch-lint, ya obligatorio por ADR-0002 cond. 1): sin él, el monolito modular degenera en big ball of mud y este ADR caduca. Es condición de merge desde el primer BC.
 7. **Coherencia con ADR-0003**: el breaker del LLM, sus timeouts (~15 s) y rate limits (~10 req/min por usuario/IP) viven definidos allí; este ADR no los duplica ni relaja.

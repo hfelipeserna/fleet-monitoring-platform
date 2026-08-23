@@ -1,0 +1,96 @@
+asyncapi: 3.0.0
+info:
+  title: Fleet Telemetry Events
+  version: 0.1.0
+  description: |
+    Backbone NATS JetStream. Stream TELEMETRY durable, replay, at-least-once. Placa colombiana como ID estable (^[A-Z]{3}[0-9]{3}$), no device_id. Idempotencia via client_event_id (Nats-Msg-Id) + ON CONFLICT DO NOTHING en DB. 202 Accepted en HTTP = retained durable, no DB yet. Subject sin región para MVP (telemetry.raw.{plate}). DLQ reintentable.
+servers:
+  nats:
+    host: nats
+    port: 4222
+    protocol: nats
+    description: NATS JetStream (local docker)
+channels:
+  telemetryRaw:
+    address: telemetry.raw.{plate}
+    description: Subject por placa estable (GTP890). Sin región en MVP; habilita sharding futuro por plate hash.
+    parameters:
+      plate:
+        description: placa colombiana ^[A-Z]{3}[0-9]{3}$
+    messages:
+      telemetryEvent:
+        $ref: '#/components/messages/TelemetryEvent'
+operations:
+  publishTelemetry:
+    action: send
+    channel:
+      $ref: '#/channels/telemetryRaw'
+    messages:
+      - $ref: '#/channels/telemetryRaw/messages/telemetryEvent'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamPublish'
+  consumeTelemetry:
+    action: receive
+    channel:
+      $ref: '#/channels/telemetryRaw'
+    messages:
+      - $ref: '#/channels/telemetryRaw/messages/telemetryEvent'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamConsume'
+components:
+  messages:
+    TelemetryEvent:
+      payload:
+        $ref: '#/components/schemas/TelemetryPayload'
+      headers:
+        type: object
+        properties:
+          Nats-Msg-Id:
+            type: string
+            format: uuid
+            description: client_event_id for JetStream dedup window (~2min)
+      traits:
+        - $ref: '#/components/messageTraits/jetStreamHeaders'
+  schemas:
+    TelemetryPayload:
+      type: object
+      required: [plate, speed]
+      properties:
+        client_event_id:
+          type: string
+          format: uuid
+          description: Idempotency key, server-generated if not provided
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+          example: GTP890
+        occurred_at:
+          type: string
+          format: date-time
+          description: Device time opcional
+        received_at:
+          type: string
+          format: date-time
+          description: Server time, hypertable time
+        lat:
+          type: ["number", "null"]
+          minimum: -90
+          maximum: 90
+        lon:
+          type: ["number", "null"]
+          minimum: -180
+          maximum: 180
+        speed:
+          type: integer
+          minimum: 0
+  operationTraits:
+    jetStreamPublish:
+      description: PublishAsync con ventana 512-1024, PublishAsyncComplete 2-5s antes de 202, subject telemetry.raw.{plate}
+    jetStreamConsume:
+      description: Durable consumer nombre fijo, AckExplicit, AckWait 30-60s, MaxAckPending 10k, MaxDeliver 3 -> telemetry.dlq con republish manual para reintento
+  messageTraits:
+    jetStreamHeaders:
+      description: Headers mapped to NATS headers
+  servers:
+    jetStream:
+      description: Stream TELEMETRY storage=file retention=limits discard=old max_age 24h dev / 72h prod max_bytes 5GB dev / 50-100GB prod, replicas 1 dev / 3 prod, DLQ reintentable

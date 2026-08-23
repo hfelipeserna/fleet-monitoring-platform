@@ -1,0 +1,192 @@
+openapi: 3.1.0
+info:
+  title: Fleet Telemetry Ingest API
+  version: 0.1.0
+  description: |
+    Write edge de ingesta. Semántica async: 202 Accepted = aceptado y retenido durable en NATS JetStream TELEMETRY (subject telemetry.raw.{plate}, Nats-Msg-Id=client_event_id), pendiente de persistencia por consumer en TimescaleDB. No implica persistencia en DB. Placa colombiana ^[A-Z]{3}[0-9]{3}$ (GTP890). Revisión 2026-08-23: placa estable, speed int, lat/lon nullable, sin fuel, received_at server time, sin región.
+servers:
+  - url: http://localhost:8080
+    description: local via LB
+  - url: http://ingest:8080
+    description: direct ingest
+paths:
+  /v1/telemetry:
+    post:
+      summary: Ingest single telemetry event (online de a 1)
+      operationId: ingestTelemetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryEvent'
+      responses:
+        '202':
+          description: Accepted - retained durable in JetStream
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /v1/telemetry/batch:
+    post:
+      summary: Ingest batch (offline-first, 1-500 events, 1MB max, ej. 245 al reconectar)
+      description: Mobile offline-first acumula 1-500 (no fijo 100). Jitter 0-60s + backoff en cliente. Online usa /v1/telemetry de a 1.
+      operationId: ingestTelemetryBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/TelemetryEvent'
+      responses:
+        '202':
+          description: Accepted batch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    example: 245
+                  rejected:
+                    type: integer
+                    example: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /healthz:
+    get:
+      summary: Health + breaker state
+      operationId: healthz
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  breaker:
+                    type: string
+                    example: closed
+                  jetstream:
+                    type: string
+                    example: connected
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: metrics
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  schemas:
+    TelemetryEvent:
+      type: object
+      required: [plate, speed]
+      properties:
+        client_event_id:
+          type: string
+          format: uuid
+          description: Idempotency key, mapped to Nats-Msg-Id. Opcional para móvil; si no viene server genera. No se expone como requerimiento al móvil en esta prueba.
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+          description: Placa colombiana estable ante cambio de celular (GTP890, TTY423). ID canónico del vehículo.
+          example: GTP890
+        occurred_at:
+          type: string
+          format: date-time
+          description: Tiempo device opcional RFC3339. Se preserva pero hypertable usa received_at (server).
+        lat:
+          type: ["number", "null"]
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Nullable si fallo GPS
+          example: 4.711
+        lon:
+          type: ["number", "null"]
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Nullable si fallo GPS
+          example: -74.072
+        speed:
+          type: integer
+          minimum: 0
+          description: Velocidad entera >=0, 0 válido. Sin fuel_pct en esta prueba.
+          example: 42
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: validation
+              details:
+                type: array
+                items:
+                  type: string
+    RateLimited:
+      description: Quota por placa exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: seconds, 5 for online/bach bucket
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: rate_limited
+    Backpressure:
+      description: Infra saturated (PublishAsyncMaxPending full or jetstream_bytes >=80% or breaker open) - distinct from 429
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: backpressure

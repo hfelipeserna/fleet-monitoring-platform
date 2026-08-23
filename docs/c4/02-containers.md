@@ -22,7 +22,7 @@ docker compose --profile docs up structurizr  # http://localhost:8080 -> Contene
 | **Mobile App** | React Native Expo, SQLite/WatermelonDB | Conductor envía telemetría offline-first, cola local, sync batch 100-500 | sec. 4.D, ADR-0006 cond.4 |
 | **Web Application** | React Vite, Leaflet + markercluster, SSE | Operador ve mapa, alertas, chat | sec. 4.C, ADR-0007 |
 | **Load Balancer** | nginx:alpine / ALB | L7 TLS, healthcheck `/healthz`, drain 15-30s, round-robin | ADR-0006 |
-| **Ingest API** | Go `cmd/ingest` | Write edge: valida -> `PublishAsync` + `PublishAsyncComplete` antes del 200 | ADR-0001 cond.2-3 |
+| **Ingest API** | Go `cmd/ingest` | Write edge: valida -> `PublishAsync` + `PublishAsyncComplete` antes del `202 Accepted` | ADR-0001 cond.2-3 enmendada 2026-08-23 |
 | **NATS JetStream** | NATS JetStream (streams TELEMETRY/ALERTS) | Bus durable, replay, backpressure (`MaxAckPending`, `MaxBytes`) | ADR-0001 |
 | **Consumer Worker** | Go `cmd/consumer` | Pull durable, batch `CopyFrom` 500-1000 a TimescaleDB, publica `alerts.*` | ADR-0001 cond.4 |
 | **TimescaleDB** | TimescaleDB + PostGIS | Hypertable `(device_id,time)` + `critical_zones` + continuous aggregates | ADR-0001 cond.4 |
