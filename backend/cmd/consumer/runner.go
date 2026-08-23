@@ -62,6 +62,22 @@ func consumeLoop(ctx context.Context, js nats.JetStreamContext, consumer *applic
 func serveHealth(port string, dlqHandler http.Handler, dbBreaker *gobreaker.CircuitBreaker, publishBreaker *breaker.Breaker) {
 	mux := http.NewServeMux()
 	mux.Handle("/internal/dlq/republish", dlqHandler)
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		dbState := 0
+		if dbBreaker != nil && dbBreaker.State() == gobreaker.StateOpen {
+			dbState = 1
+		}
+		pubState := 0
+		if publishBreaker != nil && publishBreaker.IsOpen() {
+			pubState = 1
+		}
+		_, _ = w.Write([]byte("# HELP consumer_breaker_db breaker db open\n# TYPE consumer_breaker_db gauge\n"))
+		_, _ = w.Write([]byte("consumer_breaker_db " + string(rune('0'+dbState)) + "\n"))
+		_, _ = w.Write([]byte("# HELP consumer_breaker_publish breaker publish open\n# TYPE consumer_breaker_publish gauge\n"))
+		_, _ = w.Write([]byte("consumer_breaker_publish " + string(rune('0'+pubState)) + "\n"))
+		_, _ = w.Write([]byte("# HELP consumer_up up\n# TYPE consumer_up gauge\nconsumer_up 1\n"))
+	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		dbState := breakerStateFromGobreaker(dbBreaker)
 		publishState := breakerStateFromWrapper(publishBreaker)
