@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,18 @@ import (
 
 	fleethttp "fleetmonitoring/backend/internal/fleet/adapters/http"
 )
+
+type mockZoneCounter struct {
+	count int
+	err   error
+}
+
+func (m *mockZoneCounter) Count(ctx context.Context) (int, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	return m.count, nil
+}
 
 // Covers [SPEC-002: AC-009, FR-009, NFR-005]
 func TestOpsHandler(t *testing.T) {
@@ -89,5 +102,73 @@ func TestOpsHandler(t *testing.T) {
 		}
 		// When breaker open, healthz may still be 200 but breaker=open (not 503) per spec; we document expectation
 		// This test will be refined GREEN to inject breaker mock with State=open
+	})
+}
+
+func TestMetrics_CriticalZonesTotal(t *testing.T) {
+	t.Run("GET /metrics contains critical_zones_total 2 via ZoneCounter mock", func(t *testing.T) {
+		svc := &mockQueryService{}
+		zc := &mockZoneCounter{count: 2}
+		h := fleethttp.NewHandlerWithZoneCounter(svc, zc)
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 /metrics, got %d body %s", rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "# HELP critical_zones_total") {
+			t.Fatalf("expected HELP critical_zones_total, got %q", body)
+		}
+		if !strings.Contains(body, "# TYPE critical_zones_total gauge") {
+			t.Fatalf("expected TYPE critical_zones_total gauge, got %q", body)
+		}
+		if !strings.Contains(body, "critical_zones_total 2") {
+			t.Fatalf("expected critical_zones_total 2, got %q", body)
+		}
+	})
+
+	t.Run("GET /api/metrics contains critical_zones_total 2", func(t *testing.T) {
+		svc := &mockQueryService{}
+		zc := &mockZoneCounter{count: 2}
+		h := fleethttp.NewHandlerWithZoneCounter(svc, zc)
+		req := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 /api/metrics, got %d body %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "critical_zones_total 2") {
+			t.Fatalf("expected critical_zones_total 2 on /api/metrics, got %q", rec.Body.String())
+		}
+	})
+
+	t.Run("GET /metrics with nil ZoneCounter defaults to 0", func(t *testing.T) {
+		svc := &mockQueryService{}
+		h := fleethttp.NewHandler(svc)
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "critical_zones_total 0") {
+			t.Fatalf("expected critical_zones_total 0 when no counter, got %q", rec.Body.String())
+		}
+	})
+
+	t.Run("GET /metrics when Count error still 200 with 0", func(t *testing.T) {
+		svc := &mockQueryService{}
+		zc := &mockZoneCounter{err: context.DeadlineExceeded}
+		h := fleethttp.NewHandlerWithZoneCounter(svc, zc)
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 even on Count error, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "critical_zones_total 0") {
+			t.Fatalf("expected critical_zones_total 0 on error, got %q", rec.Body.String())
+		}
 	})
 }

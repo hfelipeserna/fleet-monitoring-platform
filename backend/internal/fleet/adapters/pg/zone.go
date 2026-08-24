@@ -177,3 +177,25 @@ func (r *ZoneRepository) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (r *ZoneRepository) Count(ctx context.Context) (int, error) {
+	rows, err := r.db.Query(ctx, `SELECT count(*) FROM critical_zones`)
+	if err != nil {
+		return 0, fmt.Errorf("count zones: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, fmt.Errorf("count zones: %w", err)
+		}
+		return 0, nil
+	}
+	var n int
+	if err := rows.Scan(&n); err != nil {
+		return 0, fmt.Errorf("scan count: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("count zones: %w", err)
+	}
+	return n, nil
+}

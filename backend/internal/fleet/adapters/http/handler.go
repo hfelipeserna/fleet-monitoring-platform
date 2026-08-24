@@ -26,6 +26,10 @@ type OpsProvider interface {
 	DBPoolStat() string
 }
 
+type ZoneCounter interface {
+	Count(ctx context.Context) (int, error)
+}
+
 type defaultOps struct{}
 
 func (d defaultOps) BreakerState() string { return "closed" }
@@ -33,9 +37,10 @@ func (d defaultOps) NATSConnected() bool  { return true }
 func (d defaultOps) DBPoolStat() string   { return "ok" }
 
 type Handler struct {
-	querier Querier
-	ops     OpsProvider
-	mux     *http.ServeMux
+	querier     Querier
+	ops         OpsProvider
+	zoneCounter ZoneCounter
+	mux         *http.ServeMux
 }
 
 func NewHandler(q Querier, ops ...OpsProvider) http.Handler {
@@ -50,6 +55,26 @@ func NewHandler(q Querier, ops ...OpsProvider) http.Handler {
 	h.mux.HandleFunc("/api/healthz", h.handleHealthz)
 	h.mux.HandleFunc("/metrics", h.handleMetrics)
 	h.mux.HandleFunc("/api/metrics", h.handleMetrics)
+	return h
+}
+
+func NewHandlerWithZoneCounter(q Querier, zc ZoneCounter, ops ...OpsProvider) http.Handler {
+	var p OpsProvider = defaultOps{}
+	if len(ops) > 0 && ops[0] != nil {
+		p = ops[0]
+	}
+	h := &Handler{querier: q, ops: p, zoneCounter: zc, mux: http.NewServeMux()}
+	h.mux.HandleFunc("/api/fleet/positions", h.handlePositions)
+	h.mux.HandleFunc("/api/vehicles/", h.handleHistory)
+	h.mux.HandleFunc("/healthz", h.handleHealthz)
+	h.mux.HandleFunc("/api/healthz", h.handleHealthz)
+	h.mux.HandleFunc("/metrics", h.handleMetrics)
+	h.mux.HandleFunc("/api/metrics", h.handleMetrics)
+	return h
+}
+
+func (h *Handler) WithZoneCounter(zc ZoneCounter) *Handler {
+	h.zoneCounter = zc
 	return h
 }
 
@@ -276,8 +301,14 @@ func (h *Handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if breaker == "closed" {
 		val = 1
 	}
+	count := 0
+	if h.zoneCounter != nil {
+		if c, err := h.zoneCounter.Count(r.Context()); err == nil {
+			count = c
+		}
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.WriteHeader(http.StatusOK)
 	latency := time.Now().UnixNano() % 100
-	_, _ = fmt.Fprintf(w, "# HELP breaker_state circuit breaker state\n# TYPE breaker_state gauge\nbreaker_state %d\n# HELP breaker_closed legacy\n# TYPE breaker_closed gauge\nbreaker_closed %d\n# HELP api_sse_connections SSE clients\n# TYPE api_sse_connections gauge\napi_sse_connections 0\n# HELP p95_latency_ms p95 latency\n# TYPE p95_latency_ms gauge\np95_latency_ms %d\n", val, val, latency)
+	_, _ = fmt.Fprintf(w, "# HELP breaker_state circuit breaker state\n# TYPE breaker_state gauge\nbreaker_state %d\n# HELP breaker_closed legacy\n# TYPE breaker_closed gauge\nbreaker_closed %d\n# HELP api_sse_connections SSE clients\n# TYPE api_sse_connections gauge\napi_sse_connections 0\n# HELP p95_latency_ms p95 latency\n# TYPE p95_latency_ms gauge\np95_latency_ms %d\n# HELP critical_zones_total Number of critical zones stored\n# TYPE critical_zones_total gauge\ncritical_zones_total %d\n", val, val, latency, count)
 }
