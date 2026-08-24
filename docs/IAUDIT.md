@@ -90,6 +90,30 @@ Por qué falla: PRUEBA-TECNICA sec 4.B formula `¿vehículos >20m en zonas crít
 Refactor exigido: Eliminado `Flow 2` detector de SPEC-002; FR-005 reescrito a `alerts.critical` genéricas `{plate, alert_type}` con dedup `Nats-Msg-Id=plate:alert_type:bucket`; BR-001 reescrito `alert` por evento SSE genérico, BR-004 `dedup Nats-Msg-Id` genérico; AC-005/TS-005 reescritos a `Publish alerts.critical genérico + SSE <2s`; secuencia `C->DB ST_Within` reemplazada por `Publisher alertas` genérico con nota `SPEC-003 tool ST_Within>20m`; `SSE` queda `Flow 2` genérico. Commit spec-002 desacoplado.
 Auditor: architect
 
+## 2026-08-24 — Auditoría: fleet/domain ErrValidation duplicado + mutación Validate [SPEC-002 Step1]
+Severidad: alta
+Hallazgo: go-backend generó fleet/domain con `var ErrValidation = errors.New("validation")` duplicado de `shared/domain ErrValidation` (dos objetos distintos) y `Validate()` mutaba `Coordinates`/`*lat/*lon` in-place (value receiver con slice header copia). `vehicle_test.go:41` espera `errors.Is(err, shared.ErrValidation)` para plate pero recibía `fleet.ErrValidation` distinto -> 400 se mapeaba a 500.
+Evidencia: backend/internal/fleet/domain/zone.go:14 (pre e89a7c2), backend/internal/shared/domain/plate.go:13, backend/internal/fleet/domain/vehicle.go:60, backend/internal/fleet/domain/geo.go:40-45, reviewer ses_fcc2bcf4
+Por qué falla: `errors.Is` con `errors.Join` exige identidad de centinela único (Go 1.20). Dos `ErrValidation` rompen clasificación HTTP 400 vs 500 y violan AGENTS.md "error wrap %w" y "interfaces consumer-side con errores tipados". Mutación viola pureza de dominio y BR-010 (precisión 6 dec debe aplicarse en adapter, no en Validate).
+Refactor exigido: `geo.go:15 var ErrValidation = shared.ErrValidation` alias único re-exportado, `vehicle.go`/`alert.go` usan `shared.ParsePlate` ya joineado; `roundCoords` documentado como mutación controlada (test `zone_test.go:240` verifica round6) y deuda registrada para futuro `Normalized()` puro. Commit Step1 GREEN.
+Auditor: reviewer | architect
+
+## 2026-08-24 — Auditoría: fleet/domain snap 0.005 + continue silencioso + CC 15 [SPEC-002 Step1]
+Severidad: media
+Hallazgo: IA propuso `validateCoordinatesCountClosure` con snap `if math.Abs(delta)<0.005 { coords[n-1]=coords[0] }` (≈550m) y `validatePolygonRange` con `if len(c)<2 { continue }` silenciando coords mal dimensionadas, y `segmentsIntersect` CC 15 con 7 ramas.
+Evidencia: backend/internal/fleet/domain/geo.go:76-78,86-90,154 (pre fix) y quality-auditor ses_fcc2bcf4 / ses_fcc29344
+Por qué falla: BR-002 exige `first==last` exacto tras `round6` (RFC 7946) y `4..101` coords; snap 0.005 enmascara polígono no cerrado que PostGIS `ST_IsValid` rechaza luego (INSERT falla tras validar Go). `continue` deja pasar `[[ -74,4 ], [0], [-74,4]]` como válido y `ST_NPoints` luego falla en DB, no en 400. CC 15 >>10 viola `quality-auditor` hot path y TDD suite `zone_test.go:138` bowtie.
+Refactor exigido: Eliminado snap (exige `coords[0]==coords[n-1]` exacto tras `roundCoords`), `len<2` ahora `return ErrCoordCount`, extraído `validateLonLat` (CC 3) y `segmentsIntersectColinear` (CC 4) para bajar `validatePolygonRange` a CC 3 y `segmentsIntersect` a CC 5. Test `zone_test.go:240` ajustado para mantener cierre exacto (seteando last = first). Commit Step1 GREEN.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: migrations 0002 sin pg_advisory_lock runner + EXPLAIN faltante [SPEC-002 Step1]
+Severidad: media
+Hallazgo: IA documentó `pg_advisory_lock(727271)` en comentario SQL pero no implementó runner Go; `IF NOT EXISTS` solo evita "already exists" pero dos réplicas `api/consumer` concurrentes hacen `CREATE INDEX IF NOT EXISTS` sin lock → `lock_timeout`/`deadlock`. Falta test `EXPLAIN` que pruebe GIST `((geom::geometry))` evita seq scan hypertable.
+Evidencia: backend/migrations/0002_fleet_zones.sql:3, backend/migrations/0001_telemetry.sql:42, grep pg_advisory 0 hits, db-auditor ses_fcc29344
+Por qué falla: Plan §7 exige migrator único con `pg_advisory_lock` (ADR-0002). Sin él, rollout `migrations 0002 -> ALERTS -> api` con 5k devices puede bloquear DDL. Sin EXPLAIN, `ST_Within(telemetry.geom, zone.geom)` sin cast `::geometry` no usa `telemetry_geom_idx` y hace seq scan `O(chunks*rows)` ~216M rows.
+Refactor exigido: Documentado como deuda media aprobada para Step1 (VO+DDL sin app); exigir `migrate` job único con `SELECT pg_advisory_lock` y test `EXPLAIN (FORMAT JSON) ST_Within(...::geometry ...)` en Step2 antes de cerrar pg reader. Registrado en IAUDIT y plan §12 gates.
+Auditor: db-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
