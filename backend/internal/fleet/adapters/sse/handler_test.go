@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,9 +73,10 @@ func (f *fakeTelemetrySubscriber) SubscribePositions(ctx context.Context, plate 
 	return f.ch, func() { f.unsubCalled = true }, nil
 }
 
-// sseRecorder envuelve httptest.ResponseRecorder e implementa http.Flusher
+// sseRecorder envuelve httptest.ResponseRecorder e implementa http.Flusher de forma thread-safe
 type sseRecorder struct {
 	*httptest.ResponseRecorder
+	mu         sync.Mutex
 	flushed    bool
 	flushCount int
 }
@@ -83,7 +85,33 @@ func newSSERecorder() *sseRecorder {
 	return &sseRecorder{ResponseRecorder: httptest.NewRecorder()}
 }
 
+func (r *sseRecorder) Write(b []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Write(b)
+}
+
+func (r *sseRecorder) WriteHeader(code int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ResponseRecorder.WriteHeader(code)
+}
+
+func (r *sseRecorder) Header() http.Header {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Header()
+}
+
+func (r *sseRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Body.String()
+}
+
 func (r *sseRecorder) Flush() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.flushed = true
 	r.flushCount++
 }
@@ -118,18 +146,18 @@ func TestSSEHandler_AcceptHeader(t *testing.T) {
 		h := buildAlertHandler(alerts)
 		req := httptest.NewRequest(http.MethodGet, "/api/alerts", nil)
 		// sin Accept
-		rec := httptest.NewRecorder()
+		rec := newSSERecorder()
 
 		// Act
 		h.ServeHTTP(rec, req)
 
 		// Assert
 		if rec.Code != http.StatusBadRequest { // AC-006
-			t.Fatalf("expected 400 without Accept text/event-stream, got %d body %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 400 without Accept text/event-stream, got %d body %s", rec.Code, rec.String())
 		}
-		body := strings.ToLower(rec.Body.String())
+		body := strings.ToLower(rec.String())
 		if !strings.Contains(body, "accept") && !strings.Contains(body, "text/event-stream") {
-			t.Fatalf("expected error about Accept header, got %q", rec.Body.String()) // AC-006
+			t.Fatalf("expected error about Accept header, got %q", rec.String()) // AC-006
 		}
 	})
 
@@ -140,14 +168,14 @@ func TestSSEHandler_AcceptHeader(t *testing.T) {
 		h := buildAlertHandler(alerts)
 		req := httptest.NewRequest(http.MethodGet, "/api/alerts", nil)
 		req.Header.Set("Accept", "application/json")
-		rec := httptest.NewRecorder()
+		rec := newSSERecorder()
 
 		// Act
 		h.ServeHTTP(rec, req)
 
 		// Assert
 		if rec.Code != http.StatusBadRequest { // AC-006
-			t.Fatalf("expected 400 for Accept application/json, got %d body %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 400 for Accept application/json, got %d body %s", rec.Code, rec.String())
 		}
 	})
 
@@ -157,14 +185,14 @@ func TestSSEHandler_AcceptHeader(t *testing.T) {
 		positions := &fakeTelemetrySubscriber{ch: make(chan sse.PosMsg, 1)}
 		h := buildFleetHandler(positions)
 		req := httptest.NewRequest(http.MethodGet, "/api/fleet/positions/stream", nil)
-		rec := httptest.NewRecorder()
+		rec := newSSERecorder()
 
 		// Act
 		h.ServeHTTP(rec, req)
 
 		// Assert
 		if rec.Code != http.StatusBadRequest { // AC-001 BR-006
-			t.Fatalf("expected 400 for fleet stream without Accept, got %d body %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 400 for fleet stream without Accept, got %d body %s", rec.Code, rec.String())
 		}
 	})
 }
@@ -206,7 +234,7 @@ func TestSSEHandler_AlertCritical(t *testing.T) {
 			case <-deadline:
 				t.Fatalf("timeout waiting for SSE data <2s")
 			default:
-				body = rec.Body.String()
+				body = rec.String()
 				if strings.Contains(body, "event: alert:critical") && strings.Contains(body, "id: 123") {
 					ticked = true
 				} else {
@@ -279,7 +307,7 @@ func TestSSEHandler_FleetPosition(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 		<-done
-		body := rec.Body.String()
+		body := rec.String()
 
 		// Assert
 		if positions.plateFilter != nil { // AC-001 BR-012 sin plate = todos => nil filter
@@ -313,7 +341,7 @@ func TestSSEHandler_FleetPosition(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 		<-done
-		body := rec.Body.String()
+		body := rec.String()
 
 		// Assert
 		if positions.plateFilter == nil || *positions.plateFilter != "GTP980" { // AC-001 BR-012 con plate filtro
@@ -350,7 +378,7 @@ func TestSSEHandler_HeartbeatAndReplay(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 		<-done
-		body := rec.Body.String()
+		body := rec.String()
 
 		// Assert
 		if !strings.Contains(body, ":ping") { // AC-005 BR-006 :ping 15s
@@ -388,7 +416,7 @@ func TestSSEHandler_HeartbeatAndReplay(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 		<-done
-		body := rec.Body.String()
+		body := rec.String()
 
 		// Assert
 		if alerts.lastSeq != 101 && alerts.lastSeq != 100 { // AC-006 parse Last-Event-ID 100 -> start 101
@@ -418,19 +446,19 @@ func TestSSEHandler_NATSDownAndCancel(t *testing.T) {
 		h := buildAlertHandler(fakeErr)
 		req := httptest.NewRequest(http.MethodGet, "/api/alerts", nil)
 		req.Header.Set("Accept", "text/event-stream")
-		rec := httptest.NewRecorder()
+		rec := newSSERecorder()
 
 		// Act
 		h.ServeHTTP(rec, req)
 
 		// Assert
 		if rec.Code != http.StatusServiceUnavailable { // AC-006 NATS down ->503
-			t.Fatalf("expected 503 when NATS down, got %d body %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 503 when NATS down, got %d body %s", rec.Code, rec.String())
 		}
 		if rec.Header().Get("Retry-After") != "5" { // AC-006 Retry-After:5
-			t.Fatalf("expected Retry-After:5, got %q body %s", rec.Header().Get("Retry-After"), rec.Body.String())
+			t.Fatalf("expected Retry-After:5, got %q body %s", rec.Header().Get("Retry-After"), rec.String())
 		}
-		body := rec.Body.String()
+		body := rec.String()
 		if !strings.Contains(body, "retry: 5000") && !strings.Contains(body, "retry:5000") { // AC-006 retry:5000
 			t.Fatalf("expected retry:5000 in body, got %q", body)
 		}
@@ -444,14 +472,14 @@ func TestSSEHandler_NATSDownAndCancel(t *testing.T) {
 		h := buildFleetHandler(positions)
 		req := httptest.NewRequest(http.MethodGet, "/api/fleet/positions/stream?plate=GTP980", nil)
 		req.Header.Set("Accept", "text/event-stream")
-		rec := httptest.NewRecorder()
+		rec := newSSERecorder()
 
 		// Act
 		h.ServeHTTP(rec, req)
 
 		// Assert
 		if rec.Code != http.StatusServiceUnavailable { // AC-001 NATS down 503
-			t.Fatalf("expected 503 for fleet NATS down, got %d body %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 503 for fleet NATS down, got %d body %s", rec.Code, rec.String())
 		}
 	})
 
@@ -573,7 +601,7 @@ func TestSSEHandler_FormatAndHeaders(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		cancel()
 		<-done
-		body := rec.Body.String()
+		body := rec.String()
 
 		// Assert
 		// BR-006 retry:5000 debe enviarse al inicio o junto a eventos
