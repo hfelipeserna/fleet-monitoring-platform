@@ -36,39 +36,64 @@ docker compose --profile docs up structurizr  # http://localhost:8080 -> Contene
 
 > Secrets vía `.env` (nunca en git). Ver `.env.example`.
 
-## Quickstart
+## Cómo levantar
+
+### Opción A — Solo core (default, 6-9GB RAM)
 
 ```bash
-cp .env.example .env
-# editar .env si hace falta (POSTGRES_PASSWORD, GF_SECURITY_ADMIN_PASSWORD, GEMINI_API_KEY)
+cp .env.example .env  # edita POSTGRES_PASSWORD, GF_SECURITY_ADMIN_PASSWORD si quieres
 
+# levanta api, lb, ingest, consumer, nats, timescaledb y espera a healthy (30-40s primera vez por tune TimescaleDB)
 docker compose up --build --wait
+
+# verifica
 docker compose ps
-# api Up (healthy) 127.0.0.1:8083->8080, lb Up (healthy) 0.0.0.0:8080->80, ingest/consumer/nats/timescaledb healthy
+# api          Up (healthy)   127.0.0.1:8083->8080
+# lb           Up (healthy)   0.0.0.0:8080->80
+# ingest       Up (healthy)   0.0.0.0:8081->8080
+# consumer     Up (healthy)   127.0.0.1:8082->8081
+# nats         Up (healthy)   127.0.0.1:4222
+# timescaledb  Up (healthy)   127.0.0.1:5432
+
+# smoke rápido
 curl -s http://localhost:8083/healthz | jq
 # {"status":"ok","breaker":"closed","nats":"connected","db":"total=1 idle=1"}
-curl -s http://localhost:8080/api/healthz | jq
-# vía LB (proxy_buffering off para SSE)
+curl -s http://localhost:8080/api/healthz | jq  # vía LB (proxy_buffering off para SSE)
 
-# smoke ingest -> NATS -> consumer -> TimescaleDB (SPEC-001)
-curl -s -X POST http://localhost:8080/v1/telemetry \
-  -H 'Content-Type: application/json' \
-  -d '{"plate":"GTP890","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"'"$(uuidgen | tr '[:upper:]' '[:lower:]')"'","occurred_at":"2026-08-23T12:00:00Z"}' | jq
-# {"accepted":true}
-
-# smoke read BFF (SPEC-002) — requiere datos previos
-curl -s "http://localhost:8080/api/fleet/positions?limit=2" | jq
-# {"vehicles":[{"plate":"GTP980",...}],"next_cursor":"..."}
-curl -s "http://localhost:8080/api/vehicles/GTP980/history?from=2026-08-24T00:00:00Z&to=2026-08-24T23:59:59Z&limit=5" | jq
-
-docker compose logs -f ingest consumer api
-docker compose down -v  # reset volúmenes pgdata/nats_data
+# down / reset
+docker compose logs -f api ingest consumer  # ver logs
+docker compose down -v                      # borra pgdata/nats_data (resetea hypertable)
 ```
 
-Validación infra:
+### Opción B — Con observabilidad (PROM/Grafana/Loki/Tempo, +2GB RAM)
 
 ```bash
-docker compose config        # válido sin warnings
+# mismo core + prometheus, grafana, loki, tempo (profile observability)
+docker compose --profile observability up --build --wait
+
+docker compose --profile observability ps
+# + prometheus   Up (healthy) 0.0.0.0:9090->9090
+# + grafana      Up (healthy) 0.0.0.0:3000->3000
+# + loki         Up           0.0.0.0:3100->3100
+# + tempo        Up           0.0.0.0:3200->3200 + 4317/4318
+
+# solo observabilidad (si ya tienes el core levantado)
+docker compose --profile observability up -d --wait
+
+# bajar solo observabilidad sin apagar el core
+docker compose --profile observability down
+```
+
+### Opción C — Con docs C4
+
+```bash
+docker compose --profile docs up structurizr  # http://localhost:8088 → Contenedores_N2
+```
+
+### Validación infra
+
+```bash
+docker compose config                    # válido sin warnings (default)
 docker compose --profile observability config  # valida prometheus/grafana/loki/tempo
 ```
 
@@ -76,143 +101,76 @@ docker compose --profile observability config  # valida prometheus/grafana/loki/
 
 | Puerto host | Servicio | Interno | Perfil | Descripción |
 |---|---|---|---|---|
-| 8080 | lb (nginx) | 80 | default | Punto de entrada único — `POST /v1/telemetry`, `GET /api/fleet/positions`, `/api/vehicles/{plate}/history`, `/healthz`, `/metrics` → `proxy_buffering off` para SSE |
-| 8081 | ingest | 8080 | default | Directo a ingest (bypass LB, debug) |
-| 127.0.0.1:8082 | consumer | 8081 | default | Health `GET /healthz` del consumer (solo loopback) |
-| 127.0.0.1:8083 | api (BFF) | 8080 | default | Directo a api — `GET /api/fleet/positions`, `/healthz`, `/metrics` (bypass LB) |
+| 8080 | lb (nginx) | 80 | default | Único entry point — `POST /v1/telemetry`, `GET /api/fleet/positions`, `/api/vehicles/{plate}/history`, `/healthz`, `/metrics` → `proxy_buffering off` para SSE |
+| 8081 | ingest | 8080 | default | Directo ingest (bypass LB) |
+| 127.0.0.1:8082 | consumer | 8081 | default | Health consumer (loopback) |
+| 127.0.0.1:8083 | api (BFF) | 8080 | default | Directo api BFF (bypass LB) |
 | 127.0.0.1:4222 | nats | 4222 | default | NATS client |
-| 127.0.0.1:8222 | nats | 8222 | default | NATS monitoring `/varz` |
-| 127.0.0.1:7777 | nats-exporter | 7777 | default | `prometheus-nats-exporter` (`-varz http://nats:8222`) |
-| 127.0.0.1:5432 | timescaledb | 5432 | default | TimescaleDB PG15 (`POSTGRES_PORT` env) + PostGIS condicional |
-| 9090 | prometheus | 9090 | `observability` | Prometheus — scrapes `ingest`, `consumer`, `api`, `nats-exporter`, `nats:8222` |
-| 3000 | grafana | 3000 | `observability` | Grafana (`GF_SECURITY_ADMIN_*`) — dashboards `Fleet Ingest` + `Fleet Read` |
+| 127.0.0.1:8222 | nats | 8222 | default | NATS `/varz` |
+| 127.0.0.1:7777 | nats-exporter | 7777 | default | `prometheus-nats-exporter` |
+| 127.0.0.1:5432 | timescaledb | 5432 | default | TimescaleDB PG15 (`POSTGRES_PORT` env) |
+| 9090 | prometheus | 9090 | `observability` | Prometheus — Targets `ingest`, `api`, `consumer`, `nats-exporter` |
+| 3000 | grafana | 3000 | `observability` | Grafana (`GF_SECURITY_ADMIN_*`) |
 | 3100 | loki | 3100 | `observability` | Loki |
 | 3200 | tempo | 3200 | `observability` | Tempo + OTLP `4317`/`4318` |
 | 8088 | structurizr | 8080 | `docs` | C4 DSL viewer |
 
-> `prometheus`, `grafana`, `loki`, `tempo` solo levantan con `--profile observability`; `structurizr` con `--profile docs`.
-
 ## API — Ejemplos
 
-Base URL local: `http://localhost:8080` (vía LB). Directo ingest: `http://localhost:8081`, directo api BFF: `http://localhost:8083`.
+Base local `http://localhost:8080` (vía LB). Directo `http://localhost:8081` ingest, `http://localhost:8083` api.
 
 ```bash
-# health + breaker — ingest (vía LB) y api BFF (vía LB y directo)
+# health + breaker — ingest y api BFF
 curl -s http://localhost:8080/healthz | jq              # LB → ingest
-curl -s http://localhost:8080/api/healthz | jq           # LB → api (proxy_buffering off)
+curl -s http://localhost:8080/api/healthz | jq           # LB → api
 curl -s http://localhost:8083/healthz | jq               # directo api
-curl -s http://localhost:8080/metrics | head -n 20       # ingest metrics
-curl -s http://localhost:8083/metrics | head -n 20       # api metrics: breaker_state, api_sse_connections, p95_latency_ms, db_pool
-curl -s http://localhost:8080/api/metrics | head -n 20   # vía LB → api
+curl -s http://localhost:8080/metrics | head -n 20       # ingest
+curl -s http://localhost:8083/metrics | head -n 20       # api: breaker_state, api_sse_connections, p95_latency_ms
 
-# single — 202 Accepted (retención durable JetStream, no implica persistencia DB aún)
-curl -s -X POST http://localhost:8080/v1/telemetry \
-  -H 'Content-Type: application/json' \
-  -d '{"plate":"GTP890","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440001","occurred_at":"2026-08-23T12:00:00Z"}'
-# {"accepted":true}
+# read BFF — requiere datos previos (ver Quickstart)
+curl -s "http://localhost:8080/api/fleet/positions?limit=2" | jq
+# {"vehicles":[{"plate":"GTP980","lat":4.711,"lon":-74.072,"speed":42,"received_at":"...","status":"moving"}],"next_cursor":"..."}
+curl -s "http://localhost:8080/api/fleet/positions?plate=GTP980&limit=2" | jq
+curl -s "http://localhost:8080/api/vehicles/GTP980/history?from=2026-08-24T00:00:00Z&to=2026-08-24T23:59:59Z&limit=5" | jq
 
-# single — lat/lon null (fallo GPS) válido, speed 0 válido
-curl -s -X POST http://localhost:8080/v1/telemetry \
-  -H 'Content-Type: application/json' \
-  -d '{"plate":"GTP890","speed":0,"lat":null,"lon":null,"client_event_id":"550e8400-e29b-41d4-a716-446655440002"}'
-# {"accepted":true}
-
-# batch 1-500 / 1 MB — offline-first (ej. 2 eventos, 245 al reconectar real)
-curl -s -X POST http://localhost:8080/v1/telemetry/batch \
-  -H 'Content-Type: application/json' \
-  -d '{"events":[
-    {"plate":"GTP890","speed":10,"lat":4.7,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440003"},
-    {"plate":"TTY423","speed":20,"lat":4.71,"lon":-74.07,"client_event_id":"550e8400-e29b-41d4-a716-446655440004"}
-  ]}'
-# {"accepted":2,"rejected":0}
-
-# validación -> 400 sin publicar (placa ^[A-Z]{3}[0-9]{3}$, speed int >=0, lat/lon rango)
-curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP89","speed":10,"lat":4.7,"lon":-74}'
-curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP890","speed":-1,"lat":4.7,"lon":-74}'
-curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP890","speed":42.5,"lat":4.7,"lon":-74}'
-
-# dedup — mismo client_event_id -> 202 sin duplicar (Nats-Msg-Id + ON CONFLICT DO NOTHING)
-curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP890","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440001"}'
-# {"accepted":true}  # no duplica fila en telemetry
-
-# rate limit por placa -> 429 Retry-After:5  |  backpressure infra -> 503 Retry-After (distintos)
-```
-
-Contratos: `docs/specs/SPEC-001-telemetry-ingest/contracts/http.openapi.yaml` (OpenAPI 3.1) y `events.asyncapi.yaml`.
-
-## Cómo probar en Postman (desde levantamiento)
-
-Requisitos: `Docker Desktop` + `Postman Desktop` (o `newman` CLI). `colima` en macOS 16GB recomendado.
-
-### 1) Levantar contenedores
-
-```bash
-cp .env.example .env  # ajusta POSTGRES_PASSWORD, GF_SECURITY_ADMIN_PASSWORD si hace falta
-
-# Build + espera a healthy (api, ingest, consumer, nats, timescaledb, lb). Primera vez ~40s por init + tune TimescaleDB
-docker compose up --build --wait
-docker compose ps
-# fleet-monitoring-platform-api-1        Up (healthy)   127.0.0.1:8083->8080/tcp
-# fleet-monitoring-platform-lb-1         Up (healthy)   0.0.0.0:8080->80/tcp
-# fleet-monitoring-platform-ingest-1     Up (healthy)   0.0.0.0:8081->8080/tcp
-# fleet-monitoring-platform-timescaledb-1 Up (healthy) 127.0.0.1:5432->5432/tcp
-# fleet-monitoring-platform-nats-1       Up (healthy)   127.0.0.1:4222->4222/tcp
-
-# Verificación rápida
-curl -s http://localhost:8083/healthz | jq        # directo api
-# {"breaker":"closed","db":"total=1 idle=1","nats":"connected","status":"ok"}
-curl -s http://localhost:8080/api/healthz | jq    # vía LB (proxy_buffering off para SSE)
-curl -s "http://localhost:8083/api/fleet/positions?limit=2" | jq
-# {"next_cursor":null,"vehicles":[]}  # vacío antes de ingerir, normal
-```
-
-Si `api` queda `Restarting` con `subject overlaps`: actualiza `backend/internal/fleet/infra/nats/stream.go` a `["alerts.>"]` solo (ya corregido en `main`) y `docker compose build api && docker compose up -d`.
-
-### 2) Importar colecciones
-
-En Postman: `File → Import → Folder` `infra/postman/`:
-* `Fleet.postman_collection.json` — **SPEC-001** ingest (LB → Ingest → NATS → Consumer → TimescaleDB)
-* `Fleet.read.postman_collection.json` — **SPEC-002** read BFF (nueva, 10 requests)
-
-Variables de colección: `baseUrl = http://localhost:8080` (usa LB, no `8083`). `apiBaseUrl = http://localhost:8083` solo debug directo.
-
-### 3) Cargar datos (SPEC-001) — obligatorio antes del read
-
-`telemetry` es hypertable vacía al inicio → `GET /api/fleet/positions` devuelve `[]`. Carga primero:
-
-En Postman, colección **Fleet - SPEC-001**:
-* Ejecuta `POST /v1/telemetry single GTP980 202` 2-3 veces (cambia `plate` a `GTP980`, `ABC123`, `TTY423` con `Send`; `{{$guid}}` genera `client_event_id` distinto). Cada `202 {"accepted":true}` pasa por NATS `telemetry.raw.{plate}` → `consumer` `CopyFrom` → TimescaleDB.
-* Verifica `POST /v1/telemetry dedup same client_event_id 202` → también `202` pero no duplica (NATS `DuplicateWindow 2m` + `telemetry_dedup`).
-* Verifica `POST /v1/telemetry invalid plate 400` → `400` (no publica).
-
-Equivalente `curl`:
-```bash
-curl -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP980","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440001"}'
-```
-
-### 4) Probar read BFF (SPEC-002 Step2)
-
-Colección **Fleet - SPEC-002 Read** (importada):
-
-* `GET /api/fleet/positions?limit=2 (AC-001 keyset)` → `200` `{vehicles:[2], next_cursor:"Q..."}`
-  Valida `pm.test`: `vehicles.length==2`, `next_cursor` base64 `plate|RFC3339Nano`, `plate ^[A-Z]{3}[0-9]{3}$`, `status` `moving|idle|alert`, `lat/lon` máx 6 dec, sin `client_event_id`, sin `OFFSET` (keyset `DISTINCT ON` + `ORDER BY plate ASC, received_at DESC`).
-
-* `GET /api/fleet/positions page2 with cursor` → `GET /api/fleet/positions?limit=2&cursor={{fleet_next_cursor}}` (Postman guarda cursor automático) → `200` restante `1`, `next_cursor:null`.
-
-* `GET /api/fleet/positions?plate=GTP980` → `200` solo `GTP980` (BR-012 `sin plate=todos, con plate=solo ese`). `GTP98` → `400`.
-
-* `GET /api/vehicles/GTP890/history?from=2026-08-24T10:00:00Z&to=2026-08-24T11:00:00Z&limit=5` → `200` `{points:[5]}` `DESC`. Tests: `from>to` → `400`, `GTP89` → `400`.
-
-* `GET /api/healthz y /api/metrics (AC-009)` → `200` `{"status":"ok","breaker":"closed","nats":"connected","db":"total=1 idle=1"}` y `text/plain` con `breaker_state`, `api_sse_connections`, `p95_latency_ms`.
-
-SSE no se prueba en Postman (no soporta `EventSource`): usa `curl` como documenta la colección:
-```bash
+# SSE (no soportado en Postman, usar curl)
 curl -N -H 'Accept: text/event-stream' http://localhost:8080/api/fleet/positions/stream
-curl -N -H 'Accept: text/event-stream' 'http://localhost:8080/api/fleet/positions/stream?plate=GTP980' # solo ese, "Ver todos" reconecta sin plate
-curl -N -H 'Accept: text/event-stream' http://localhost:8080/api/alerts # 4 tipos zone_enter/zone_exit/speeding_on/off cuando Step4 esté
+curl -N -H 'Accept: text/event-stream' 'http://localhost:8080/api/fleet/positions/stream?plate=GTP980'
+
+# ingest single/batch (SPEC-001)
+curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP980","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440001","occurred_at":"2026-08-23T12:00:00Z"}'
+# {"accepted":true}
+curl -s -X POST http://localhost:8080/v1/telemetry -H 'Content-Type: application/json' -d '{"plate":"GTP890","speed":0,"lat":null,"lon":null,"client_event_id":"550e8400-e29b-41d4-a716-446655440002"}'
+curl -s -X POST http://localhost:8080/v1/telemetry/batch -H 'Content-Type: application/json' -d '{"events":[{"plate":"GTP890","speed":10,"lat":4.7,"lon":-74.072,"client_event_id":"550e8400-e29b-41d4-a716-446655440003"},{"plate":"TTY423","speed":20,"lat":4.71,"lon":-74.07,"client_event_id":"550e8400-e29b-41d4-a716-446655440004"}]}'
 ```
 
-### 5) CLI con newman
+Contratos: `docs/specs/SPEC-001-telemetry-ingest/contracts/http.openapi.yaml` y `events.asyncapi.yaml`, `docs/specs/SPEC-002-fleet-read-zones/contracts/http.openapi.yaml`.
+
+## Cómo probar en Postman
+
+Requisitos: `Docker Desktop` + `Postman Desktop` (o `newman` CLI).
+
+### Importar
+
+`File → Import → Folder` `infra/postman/`:
+* `Fleet.postman_collection.json` — **SPEC-001** ingest
+* `Fleet.read.postman_collection.json` — **SPEC-002** read BFF (10 requests)
+
+Variables: `baseUrl = http://localhost:8080` (LB, no `8083`).
+
+### Flujo recomendado (orden)
+
+1. **Cargar datos** con colección **SPEC-001**: ejecuta `POST /v1/telemetry single GTP980 202` 2-3 veces cambiando `plate` (`GTP980`, `ABC123`, `TTY423`); cada `202 {"accepted":true}` va por NATS → `consumer` → TimescaleDB. Verifica `dedup` (mismo `client_event_id` → `202` sin duplicar) y `invalid plate 400`.
+
+2. **Probar read BFF** con colección **SPEC-002 Read**:
+   * `GET /api/fleet/positions?limit=2` → `200` `pm.test` valida `vehicles.length==2`, `next_cursor` base64 `plate|RFC3339Nano`, `status`, 6 dec, sin `OFFSET`.
+   * `GET /api/fleet/positions page2 with cursor` → `cursor={{fleet_next_cursor}}` → `200` restante.
+   * `GET /api/fleet/positions?plate=GTP980` → solo ese (BR-012).
+   * `GET /api/vehicles/GTP890/history?from&to&limit=5` → `200` `DESC`.
+   * `GET /api/healthz` y `GET /api/metrics` → `200`.
+   * SSE: usar `curl` como arriba (Postman no soporta `EventSource`).
+
+### CLI
 
 ```bash
 npm i -g newman
@@ -220,38 +178,64 @@ newman run infra/postman/Fleet.postman_collection.json --env-var baseUrl=http://
 newman run infra/postman/Fleet.read.postman_collection.json --env-var baseUrl=http://localhost:8080 --reporters cli
 ```
 
-Incluye `pm.test` para `202/400`, `429/503 Retry-After`, `healthz breaker`, `metrics ingest_inflight`, `dedup`, `keyset` sin `OFFSET`.
-
 ---
 
-## Observabilidad (Prometheus / Grafana / Loki / Tempo)
+## Observabilidad — Cómo levantar y visualizar vía web
 
-Stack opcional `--profile observability` (no carga RAM por defecto en 16GB; api + ingest + consumer + nats + timescaledb ≈ 6-9GB, observability añade ~2GB):
+Stack opcional `--profile observability` (no carga por defecto; core 6-9GB, +observability ~2GB):
+
+### Levantar
 
 ```bash
+# Opción A: todo junto
 docker compose --profile observability up --build --wait
-open http://localhost:9090  # Prometheus Targets: ingest:8080/metrics, api:8080/metrics, consumer:8081/metrics, nats-exporter:7777, nats:8222/varz
-open http://localhost:3000  # Grafana admin / change-me (ver .env GF_SECURITY_ADMIN_*)
+# Opción B: si ya tienes el core Up, añade solo observabilidad
+docker compose --profile observability up -d --wait
 ```
 
-* `prometheus-nats-exporter` (`127.0.0.1:7777`) expone JetStream `nats-exporter:7777` + `nats:8222/varz`.
-* `infra/prometheus/prometheus.yml` scrapea `ingest:8080/metrics`, `api:8080/metrics` (`breaker_state`, `api_sse_connections`, `p95_latency_ms`, `db_pool_inflight`), `consumer:8081/metrics`, `nats-exporter:7777`, `nats:8222`.
-* Métricas clave SPEC-002:
-  * `breaker_state` (`0 closed, 1 half-open, 2 open`) + `Retry-After:5` en `503` (NFR-003)
-  * `api_sse_connections` gauge (NFR-005)
-  * `p95_api_ms` histogram (NFR-001 p95 <150ms para `GET /fleet/positions?limit=100` con índice `(plate, received_at DESC)`)
-  * `db_pool_inflight`, `nats_pending`, `jetstream_bytes` (alerta `>=80% max_bytes` → `discard old` perdería `alerts.critical`)
-  * `ingest_inflight`, `nats_pending`/`num_ack_pending`, `db_lag`
-* `loki:3100` (logs `slog` JSON `plate, zone_id, cursor, p95_ms`) y `tempo:3200` (OTLP `4317`/`4318`, gate `OTEL_ENABLED`) cableados; dashboards `Fleet Read` en `infra/observability/grafana/dashboards/fleet-read.json` (profile observability) muestran `p95`, `breaker`, `sse_clients`, `jetstream_bytes`.
+### Visualizar vía web
 
-Verifica métricas sin Grafana:
+| URL | Qué ver | Credenciales |
+|---|---|---|
+| `http://localhost:9090` | **Prometheus** → `Status → Targets` deben estar `Up`: `api:8080/metrics`, `ingest:8080/metrics`, `consumer:8081/metrics`, `nats-exporter:7777`, `nats:8222/varz`. `Graph` → queries abajo | — |
+| `http://localhost:3000` | **Grafana** → `Dashboards → Fleet` (Ingest + Read). Datasources `Prometheus`, `Loki`, `Tempo` ya provisionados | `admin` / `change-me` (ver `.env` `GF_SECURITY_ADMIN_*`) |
+| `http://localhost:3100/ready` | **Loki** `ready` | — |
+| `http://localhost:3200/status` | **Tempo** `ingesting` | — |
+| `http://localhost:7777/metrics` | **NATS exporter** raw | — |
+| `http://localhost:8222/varz` | **NATS** JSON `jetstream` | — |
+
+Grafana viene provisionado en `infra/observability/grafana/` (datasources + dashboards `fleet-read.json` con `p95`, `breaker`, `sse_clients`, `jetstream_bytes`). Si no ves datos, espera 15s (scrape `15s`) y genera tráfico (`POST /v1/telemetry` + `GET /api/fleet/positions`).
+
+### Queries Prometheus útiles (Graph → Execute, Range 5m, Step 15s)
+
+```promql
+breaker_state                    # 0 closed, 1 half-open, 2 open
+api_sse_connections              # SSE clients (fleet:position)
+p95_latency_ms                   # NFR-001 p95 <150ms para GET /fleet/positions
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))
+up{job="api"}                    # 1 = healthy
+jetstream_bytes                  # vs max_bytes 5GB (alerta >=80%)
+num_ack_pending{stream="TELEMETRY"}
+rate(http_requests_total{job="ingest",code="429"}[5m])  # rate limit por placa
+rate(http_requests_total{job="ingest",code="503"}[5m])  # backpressure
+```
+
+### Verificar sin Grafana (curl)
+
 ```bash
-curl -s http://localhost:8083/metrics | grep -E 'breaker_state|api_sse|p95'
+curl -s http://localhost:8083/metrics | grep -E 'breaker_state|api_sse|p95|jetstream'
 curl -s http://localhost:9090/api/v1/query?query=breaker_state | jq
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
 docker compose logs -f api | grep -E 'plate|cursor|breaker'
+docker compose logs -f ingest | grep ingest_inflight
 ```
 
-* `loki:3100` y `tempo:3200` mantienen `slog` JSON y traces OTel; Grafana provisioning en `infra/observability/grafana/`.
+### Apagar observabilidad sin apagar el core
+
+```bash
+docker compose --profile observability down
+docker compose ps  # api/lb/ingest siguen Up
+```
 
 ## Contratos
 
