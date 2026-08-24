@@ -29,6 +29,8 @@ var (
 	ErrMissingZone      = errors.New("missing zone")
 	ErrUnexpectedZone   = errors.New("unexpected zone")
 	ErrInvalidAlertType = errors.New("invalid alert type")
+	ErrNotFound         = errors.New("not found")
+	ErrInvalidPolygon   = errors.New("invalid polygon")
 )
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -50,6 +52,10 @@ func validateUUID(s string) error {
 		return fmt.Errorf("invalid uuid %q: %w", s, errors.Join(ErrInvalidUUID, ErrValidation))
 	}
 	return nil
+}
+
+func ValidateUUID(s string) error {
+	return validateUUID(s)
 }
 
 func validateZoneName(name string) error {

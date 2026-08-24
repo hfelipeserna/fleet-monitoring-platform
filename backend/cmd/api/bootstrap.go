@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -118,6 +120,78 @@ func (o *opsProvider) DBPoolStat() string {
 	return fmt.Sprintf("total=%d idle=%d", s.TotalConns(), s.IdleConns())
 }
 
+type zoneBreaker struct {
+	svc     *fleetapp.ZoneService
+	breaker *gobreaker.CircuitBreaker
+	timeout time.Duration
+}
+
+func withBreaker[T any](ctx context.Context, breaker *gobreaker.CircuitBreaker, timeout time.Duration, fn func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if breaker != nil && breaker.State() == gobreaker.StateOpen {
+		var zero T
+		return zero, fmt.Errorf("breaker open: %w", gobreaker.ErrOpenState)
+	}
+	var out T
+	var qerr error
+	exec := func() (any, error) {
+		var err error
+		out, err = fn(ctx)
+		return nil, err
+	}
+	if breaker != nil {
+		_, qerr = breaker.Execute(exec)
+	} else {
+		_, qerr = exec()
+	}
+	if qerr != nil {
+		var zero T
+		return zero, qerr
+	}
+	return out, nil
+}
+
+func (z *zoneBreaker) Create(ctx context.Context, name string, coords [][]float64) (fleetdomain.Zone, error) {
+	out, err := withBreaker(ctx, z.breaker, z.timeout, func(c context.Context) (fleetdomain.Zone, error) {
+		return z.svc.Create(c, name, coords)
+	})
+	if err != nil {
+		return fleetdomain.Zone{}, fmt.Errorf("create zone: %w", err)
+	}
+	return out, nil
+}
+
+func (z *zoneBreaker) List(ctx context.Context) ([]fleetdomain.Zone, error) {
+	out, err := withBreaker(ctx, z.breaker, z.timeout, func(c context.Context) ([]fleetdomain.Zone, error) {
+		return z.svc.List(c)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list zones: %w", err)
+	}
+	return out, nil
+}
+
+func (z *zoneBreaker) Update(ctx context.Context, id string, name string, coords [][]float64) (fleetdomain.Zone, error) {
+	out, err := withBreaker(ctx, z.breaker, z.timeout, func(c context.Context) (fleetdomain.Zone, error) {
+		return z.svc.Update(c, id, name, coords)
+	})
+	if err != nil {
+		return fleetdomain.Zone{}, fmt.Errorf("update zone: %w", err)
+	}
+	return out, nil
+}
+
+func (z *zoneBreaker) Delete(ctx context.Context, id string) error {
+	_, err := withBreaker(ctx, z.breaker, z.timeout, func(c context.Context) (struct{}, error) {
+		return struct{}{}, z.svc.Delete(c, id)
+	})
+	if err != nil {
+		return fmt.Errorf("delete zone: %w", err)
+	}
+	return nil
+}
+
 func Bootstrap(ctx context.Context) (*Server, error) {
 	databaseURL := fleetenv.GetDatabaseURL()
 	if databaseURL == "" {
@@ -144,11 +218,13 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 		_ = nc.Drain()
 		return nil, fmt.Errorf("pgxpool failed: %w", err)
 	}
+	// separate breakers: fleet-read for queries and fleet-zone for writes isolate failure domains
+	// zone failures must not trip read circuit and vice versa
 	adapter := fleetpg.NewPgxPoolAdapter(pool)
 	reader := fleetpg.NewReader(adapter)
 	svc := fleetapp.NewQueryService(reader)
-	breaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name:        "fleet-api",
+	readBreaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-read",
 		MaxRequests: 5,
 		Interval:    30 * time.Second,
 		Timeout:     30 * time.Second,
@@ -159,10 +235,33 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
 		},
 	})
-	q := &querier{svc: svc, breaker: breaker, timeout: 2 * time.Second}
-	ops := &opsProvider{breaker: breaker, nc: nc, pool: pool}
+	zoneBreakerCB := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-zone",
+		MaxRequests: 5,
+		Interval:    30 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			if c.Requests < 10 {
+				return false
+			}
+			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
+		},
+	})
+	zoneRepo := fleetpg.NewZoneRepository(adapter)
+	zoneSvc := fleetapp.NewZoneService(zoneRepo)
+	zoneWrapped := &zoneBreaker{svc: zoneSvc, breaker: zoneBreakerCB, timeout: 2 * time.Second}
+	zoneHandler := fleethttp.NewZoneHandler(zoneWrapped)
+	q := &querier{svc: svc, breaker: readBreaker, timeout: 2 * time.Second}
+	ops := &opsProvider{breaker: readBreaker, nc: nc, pool: pool}
 	handler := fleethttp.NewHandler(q, ops)
+	combined := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/zones" || strings.HasPrefix(r.URL.Path, "/api/zones/") {
+			zoneHandler.ServeHTTP(w, r)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 	addr := ":" + apiPort
-	srv := NewServer(handler, addr, nc, pool)
+	srv := NewServer(combined, addr, nc, pool)
 	return srv, nil
 }
