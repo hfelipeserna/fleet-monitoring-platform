@@ -230,6 +230,16 @@ paths:
                 $ref: '#/components/schemas/ZoneFeature'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Duplicate zone name (case-insensitive lower(name) UNIQUE)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: zone name already exists
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -264,6 +274,16 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Duplicate zone name (case-insensitive lower(name) UNIQUE)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: zone name already exists
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':

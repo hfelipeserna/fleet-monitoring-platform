@@ -81,9 +81,10 @@ SPEC-001 cerró el write path (`Mobile -> LB -> Ingest -> NATS -> Consumer -> Ti
 - **Alternative Flows**:
   - 2a. `PUT /api/zones/{id}` actualiza `name/geom` -> `200`
   - 2b. `DELETE /api/zones/{id}` -> `204`
-- **Error Flows**:
-  - 2c. Polígono no cerrado / <4 puntos / self-intersecting inválido -> `400 {error:validation, details:[...]}` sin persistir
-  - 3a. `id` inexistente -> `404`
+ - **Error Flows**:
+   - 2c. Polígono no cerrado / <4 puntos / self-intersecting inválido -> `400 {error:validation, details:[...]}` sin persistir
+   - 2d. `name` duplicado (case-insensitive `lower(name)`) -> `409 Conflict {error:"zone name already exists"}` (unique `critical_zones_name_unique`, migración `0003`)
+   - 3a. `id` inexistente -> `404`
 - **Postconditions**: `GET /api/zones` alimenta `<GeoJSON />` en Leaflet y `findVehiclesStoppedInCriticalZones` futuro
 - **Business Rules**: BR-002, BR-005, BR-007
 
@@ -135,7 +136,7 @@ SPEC-001 cerró el write path (`Mobile -> LB -> Ingest -> NATS -> Consumer -> Ti
 | FR-001 | Exponer `GET /api/fleet/positions?plate&limit&cursor` snapshot última posición por placa (sin `plate`=flota completa, con `plate`=solo ese; filtro `?plate=GTP980` validado `^[A-Z]{3}[0-9]{3}$`) con paginación keyset `(plate, received_at DESC)` cap 500, default 100; orden estable | UC-001 | must |
 | FR-011 | Exponer `GET /api/fleet/positions/stream?plate` SSE `text/event-stream` `event: fleet:position` en tiempo real (sin `plate`=todos, con `plate`=solo ese; toggle "Ver todos" reconecta sin filtro), `id: nats-seq`, `retry:5000`, `:ping` 15s, `Last-Event-ID` replay | UC-001 | must |
 | FR-002 | Exponer `GET /api/vehicles/{plate}` última posición de una placa (atajo a `fleet/positions?plate=`) y `GET /api/vehicles/{plate}/history?from&to&limit&cursor` historial ordenado `received_at DESC` con filtros `from/to` ISO8601, `lat/lon` pueden ser null | UC-001 | must |
-| FR-003 | Exponer `GET /api/zones` -> GeoJSON `FeatureCollection` (Polygon, SRID 4326) + `POST /api/zones` + `PUT /api/zones/{id}` + `DELETE /api/zones/{id}`; validar polígono cerrado >=4 y <=101 coords (<=100 vértices), área>0 | UC-002 | must |
+| FR-003 | Exponer `GET /api/zones` -> GeoJSON `FeatureCollection` (Polygon, SRID 4326) + `POST /api/zones` + `PUT /api/zones/{id}` + `DELETE /api/zones/{id}`; validar polígono cerrado >=4 y <=101 coords (<=100 vértices), área>0, `409 Conflict` si `name` duplicado case-insensitive (`UNIQUE lower(name)`, `0003`) | UC-002 | must |
 | FR-004 | Persistir `critical_zones(id UUID PK, name TEXT NOT NULL, geom geometry(Polygon,4326) NOT NULL, created_at TIMESTAMPTZ)` con `GIST(geom)` y `telemetry` con `GIST(geom)` | UC-002 | must |
 | FR-005 | Publicar `alerts.critical` tipadas `alert_type: zone_enter | zone_exit | speeding_on | speeding_off` en NATS para SSE (`{plate, alert_type, zone_id?, zone_name?, lat, lon, speed, created_at, event_id}`) con `Nats-Msg-Id=plate:alert_type:bucket` dedup; front traduce a `"GTP980 entra en zona..."`, `"sale..."`, `"superando 80Km/h"`, `"vuelve a <80"`; `stopped >20m en zona` es tool de `SPEC-003` | UC-003 | must |
 | FR-006 | Exponer `GET /api/alerts` SSE `text/event-stream` con `event: alert:critical`, `id: <nats-sequence>`, `retry: 5000`, `data: JSON`, soporte `Last-Event-ID` replay, heartbeat `:ping` 15s | UC-003 | must |
@@ -149,7 +150,7 @@ SPEC-001 cerró el write path (`Mobile -> LB -> Ingest -> NATS -> Consumer -> Ti
 | ID | Descripción | UC/FR Relacionado |
 |----|-------------|-------------------|
 | BR-001 | `status` derivado: `speed>0 -> moving`, `speed=0 && now - received_at <20m -> idle`, `alert` cuando `alerts.critical` recibido por SSE (color rojo); `ST_Within && >20m` es tool de `SPEC-003` | UC-001, FR-001 |
-| BR-002 | `critical_zones.geom` Polygon cerrado: primer y último coord idénticos, >=4 y <=101 posiciones (<=100 vértices distintos), winding válido, SRID 4326; área>0; `ST_IsValid(geom)` debe ser true | UC-002, FR-003/004 |
+| BR-002 | `critical_zones.geom` Polygon cerrado: primer y último coord idénticos, >=4 y <=101 posiciones (<=100 vértices distintos), winding válido, SRID 4326; área>0; `ST_IsValid(geom)` debe ser true; `name` único case-insensitive `UNIQUE lower(name)` → `409` (0003) | UC-002, FR-003/004 |
 | BR-003 | Paginación keyset obligatoria: `cursor = base64(plate|received_at)`, orden `(plate ASC, received_at DESC)`; prohibido `OFFSET` para fleet/history (db-auditor) | UC-001, FR-001/002 |
 | BR-004 | Idempotencia alerta SSE: dedup por `Nats-Msg-Id = {plate}:{alert_type}:{bucket}` (bucket `zone_enter/zone_exit` por `plate:zone:bucket`, `speeding_*` por `plate:bucket`); no repetir misma alerta en ventana dedup JetStream 2m | UC-003, FR-005 |
 | BR-005 | GeoJSON canónico: `GET /api/zones` es única fuente para `<GeoJSON />` y para tool `findVehiclesStoppedInCriticalZones`; prohibido duplicar definición zona en frontend | UC-002/004, FR-003/010 |
@@ -257,10 +258,10 @@ Transiciones inválidas: `IDLE -> HALF_OPEN` sin subscribe. Estados finales: `ID
   - Errores: `400` plate inválido / from>to, `404` plate sin datos -> `200 {points:[]}` (no 404), `503`
 - **Endpoint**: `GET /api/zones`
   - Response `200 GeoJSON FeatureCollection {type:FeatureCollection, features:[{type:Feature, id:UUID, properties:{name}, geometry:{type:Polygon, coordinates:[[[lon,lat]...]]}}]}`
-- **Endpoint**: `POST /api/zones`
+ - **Endpoint**: `POST /api/zones`
   - Request `{name string 1..100, geojson: {type:Polygon, coordinates:[[[lon,lat]...]]}}`
-  - Response `201 Feature` / `400 validation` / `429` / `503`
-- **Endpoint**: `PUT /api/zones/{id}` + `DELETE /api/zones/{id}` similares (`200`/`204`, `400`/`404`/`503`)
+  - Response `201 Feature` / `400 validation` / `409 duplicate name (lower(name))` / `429` / `503`
+ - **Endpoint**: `PUT /api/zones/{id}` + `DELETE /api/zones/{id}` similares (`200`/`204`, `400`/`404`/`409` para PUT duplicado/`503`)
 - **Endpoint**: `GET /api/alerts` SSE
   - Request header `Accept: text/event-stream` + `Last-Event-ID` opcional
   - Response `200 text/event-stream` con `event: alert:critical\ndata: {plate, alert_type: zone_enter|zone_exit|speeding_on|speeding_off, zone_id?, zone_name?, lat, lon, speed, created_at, event_id}\n\n` + `:ping` cada 15s + `retry: 5000`
@@ -380,7 +381,7 @@ AC-002 (UC-001, FR-002, BR-003/007):
 AC-003 (UC-002, FR-003/004, BR-002/005):
   Given Polygon cerrado [[-74.07,4.71],[-74.05,4.71],[-74.05,4.73],[-74.07,4.73],[-74.07,4.71]]
   When POST /api/zones {name:"Zona Norte", geojson: Polygon}
-  Then 201 {id UUID, name, geojson} y GET /api/zones contiene Feature con ST_IsValid true, ST_Area>0 y ST_NPoints<=101; When Polygon no cerrado o 3 puntos o línea degenerada área 0 (4 coords colineales/duplicate) o >101 coords Then 400 {error:validation, details:["first==last", "ST_Area>0", "ST_NPoints<=101"]} sin INSERT
+  Then 201 {id UUID, name, geojson} y GET /api/zones contiene Feature con ST_IsValid true, ST_Area>0 y ST_NPoints<=101; When Polygon no cerrado o 3 puntos o línea degenerada área 0 (4 coords colineales/duplicate) o >101 coords Then 400 {error:validation, details:["first==last", "ST_Area>0", "ST_NPoints<=101"]} sin INSERT; When POST mismo name (case-insensitive) Then 409 {error:"zone name already exists"} por UNIQUE lower(name) (0003)
 
 AC-004 (UC-002, FR-003, BR-002):
   Given zona id abc-123 existe
