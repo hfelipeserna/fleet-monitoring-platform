@@ -247,6 +247,32 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
 		},
 	})
+	alertPublishBreaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-alert-publish",
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			if c.Requests < 10 {
+				return false
+			}
+			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
+		},
+	})
+	zoneResolverBreaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-zone-resolver",
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			if c.Requests < 10 {
+				return false
+			}
+			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
+		},
+	})
+	_ = alertPublishBreaker
+	_ = zoneResolverBreaker
 	zoneRepo := fleetpg.NewZoneRepository(adapter)
 	zoneSvc := fleetapp.NewZoneService(zoneRepo)
 	zoneWrapped := &zoneBreaker{svc: zoneSvc, breaker: zoneBreakerCB, timeout: 2 * time.Second}

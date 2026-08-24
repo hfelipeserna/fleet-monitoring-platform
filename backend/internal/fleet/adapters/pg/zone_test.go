@@ -50,6 +50,7 @@ type fakeZoneRows struct {
 
 func (r *fakeZoneRows) Next() bool { return r.idx < len(r.data) }
 func (r *fakeZoneRows) Close()     {}
+func (r *fakeZoneRows) Err() error { return nil }
 func (r *fakeZoneRows) Scan(dest ...any) error {
 	if r.idx >= len(r.data) {
 		return fmt.Errorf("no more rows")

@@ -121,6 +121,7 @@ func (r *mockRows) Scan(dest ...any) error {
 	return nil
 }
 func (r *mockRows) Close() {}
+func (r *mockRows) Err() error { return nil }
 
 func base64CursorPG(plate string, t time.Time) string {
 	raw := fmt.Sprintf("%s|%s", plate, t.Format(time.RFC3339Nano))

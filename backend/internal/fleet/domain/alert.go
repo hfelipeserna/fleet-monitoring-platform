@@ -7,6 +7,12 @@ import (
 	shared "fleetmonitoring/backend/internal/shared/domain"
 )
 
+const (
+	SpeedingBucket = 5 * time.Minute
+	ZoneBucket     = 20 * time.Minute
+	DedupWindow    = 2 * time.Minute
+)
+
 type Alert struct {
 	EventID   string
 	Plate     string
@@ -16,6 +22,29 @@ type Alert struct {
 	Lon       *float64
 	Speed     int
 	CreatedAt time.Time
+}
+
+func BucketFor(alertType string, t time.Time) int64 {
+	switch alertType {
+	case "zone_enter", "zone_exit":
+		return t.Truncate(ZoneBucket).Unix()
+	default:
+		return t.Truncate(SpeedingBucket).Unix()
+	}
+}
+
+func (a Alert) MsgID() string {
+	bucket := BucketFor(a.AlertType, a.CreatedAt)
+	switch a.AlertType {
+	case "zone_enter", "zone_exit":
+		zid := ""
+		if a.ZoneID != nil {
+			zid = *a.ZoneID
+		}
+		return fmt.Sprintf("%s:%s:%s:%d", a.Plate, a.AlertType, zid, bucket)
+	default:
+		return fmt.Sprintf("%s:%s:%d", a.Plate, a.AlertType, bucket)
+	}
 }
 
 func (a Alert) Validate() error {
