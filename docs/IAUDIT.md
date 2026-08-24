@@ -162,6 +162,22 @@ Por qué falla: OWASP API4 Unrestricted Resource Consumption (XFF spoof → cuot
 Refactor exigido: Extraídos `shared/domain/chat_validation.go` `ValidateMessage` y `requestid.go` `RequestIDKey`, `chat.go` refactorizado a `ServeHTTP` 27L CC<6 con helpers `ensureRequestID/checkMethod/checkContentType/decodeAndValidate/checkRateLimit/doChat/classifyChatError` solo `errors.Is`, `mime.ParseMediaType` + `DisallowUnknownFields`, `isTrustedProxy/getIP` + `limiterEntry{s,lastSeen}` sweep 10m, `shared.WithRequestID`, `writeChatJSON` headers `nosniff/no-store`, `net.SplitHostPort` IPv6, `NewChatHandlerWithOptions`. `go test -run TestChatBFF` PASS 0.58s, `go vet 0`, CC <10, depguard `fleet !→ assistant` OK. Commit Step2.
 Auditor: reviewer | security | quality-auditor | architect
 
+## 2026-08-24 — Auditoría: assistant/pg ST_Within DRY/CC/Round3 + clamp [SPEC-003 Step3]
+Severidad: media
+Hallazgo: IA generó `assistant/application/stopped.go` y `fleet/adapters/pg/stopped.go` con validación `minMinutes 1..1440` + `limit 1..20` duplicada con literales `1,20,1440`, `pg.FindStoppedInZones` 54L CC 13 (4 responsabilidades), triple `Round3` `pg->application->domain` idempotente pero redundante, `limit 0=>1` vs `DefaultLimit 20` inconsistente, `stoppedQuery` monolínea 280 chars sin preallocate `make(0,limit)` y `zoneArg any` boxing.
+Evidencia: backend/internal/assistant/application/stopped.go:23-33, backend/internal/fleet/adapters/pg/stopped.go:22-75 (pre fix), quality-auditor ses_fca0563a, db-auditor ses_fca06230
+Por qué falla: Viola DRY single source (cambio `LimitMax 20->50` requiere 2 ediciones), CC>10 bloquea test exhaustivo, triple `Round3` desperdicia `2*20` ops/request y oscurece SSOT `shared.Round3`, `limit 0=>1` rompe `BR-004` mínima sorpresa.
+Refactor exigido: Creado `shared/domain/stopped_validation.go` con `ValidateStoppedParams` + const `StoppedLimit/ MinMinutes` SSOT, `assistant/domain/chat.go` alias `LimitMin/Max`, `application/stopped.go` y `pg/stopped.go` delegan a helper, `pg` refactorizado a `validateAndClamp/queryStopped/scanStoppedRows` orquestador 16L CC 1, `stoppedQuery` multilínea, `out := make(0,limit)`, `limit 0=>20` unificado, `Round3` solo en `domain.Validate/Normalized`. `go test` PASS, `go vet 0`, CC<6. Commit Step3.
+Auditor: quality-auditor | db-auditor | architect
+
+## 2026-08-24 — Auditoría: fleet/pg ST_Within escalabilidad GIST sin ventana ni índice speed [SPEC-003 Step3]
+Severidad: alta
+Hallazgo: IA propuso `stoppedQuery` `SELECT DISTINCT ON (plate) ... ST_Within(t.geom::geometry, cz.geom) WHERE speed=0 AND received_at <= now()-interval` con `GIST ((geom::geometry))` per-chunk y `LIMIT 20` sin ventana `received_at > now()-24h` ni índice parcial `WHERE speed=0`, con `DISTINCT ON (plate) ORDER BY plate, received_at DESC` `O(P log P)` sobre 5k plates.
+Evidencia: backend/internal/fleet/adapters/pg/stopped.go:12, backend/migrations/0001_telemetry.sql:45, scalability ses_fca04137, db-auditor ses_fca06230
+Por qué falla: GIST per-chunk no permite chunk pruning con `<= now()-20m` open-ended (`90 chunks` @90d retention → 3.6M filas/query), `speed=0` sin índice → `Seq Scan`/`BitmapAnd` 14M `ST_Within`/query, `DISTINCT ON` sort compite con GIST y escanea `~200-2000` plates para 20 resultados. NFR-001 `p95 <150ms` incumplido a >30 chunks/500M filas. `EXPLAIN` sin `speed` índice da `Seq Scan`.
+Refactor exigido: Creada migración `0004_telemetry_speed_geom.sql` con `telemetry_speed0_received_at_idx (received_at DESC) WHERE speed=0` y `telemetry_speed0_geom_idx GIST ((geom::geometry)) WHERE speed=0`, documentado `EXPLAIN` debe mostrar `BitmapAnd` no `Seq Scan`, ventana `received_at > now()-24h` como deuda para ADR, `LATERAL` vs `DISTINCT ON` anotado, `statement_timeout 2s` + breaker en tools layer. Escalable con límites MVP 1k/30d, quiebre >5k/90d.
+Auditor: scalability | db-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

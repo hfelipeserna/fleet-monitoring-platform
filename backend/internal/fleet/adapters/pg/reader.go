@@ -53,10 +53,10 @@ type pgxRowsAdapter struct {
 	rows pgx.Rows
 }
 
-func (r *pgxRowsAdapter) Next() bool { return r.rows.Next() }
+func (r *pgxRowsAdapter) Next() bool             { return r.rows.Next() }
 func (r *pgxRowsAdapter) Scan(dest ...any) error { return r.rows.Scan(dest...) }
-func (r *pgxRowsAdapter) Close() { r.rows.Close() }
-func (r *pgxRowsAdapter) Err() error { return r.rows.Err() }
+func (r *pgxRowsAdapter) Close()                 { r.rows.Close() }
+func (r *pgxRowsAdapter) Err() error             { return r.rows.Err() }
 
 func decodeCursor(cursor string) (string, time.Time, error) {
 	p, t, err := shared.DecodeCursor(cursor)

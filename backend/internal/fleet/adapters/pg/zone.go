@@ -104,7 +104,7 @@ func (r *ZoneRepository) List(ctx context.Context) ([]fleet.Zone, error) {
 			continue
 		}
 		var gj struct {
-			Type        string          `json:"type"`
+			Type        string        `json:"type"`
 			Coordinates [][][]float64 `json:"coordinates"`
 		}
 		if err := json.Unmarshal([]byte(geoJSONStr), &gj); err != nil {

@@ -10,11 +10,11 @@ import (
 )
 
 type fakeRows struct {
-	nextCalls int
-	nextRet []bool
-	scanID string
-	scanErr error
-	err error
+	nextCalls   int
+	nextRet     []bool
+	scanID      string
+	scanErr     error
+	err         error
 	closeCalled bool
 }
 
@@ -38,12 +38,12 @@ func (f *fakeRows) Scan(dest ...any) error {
 	}
 	return nil
 }
-func (f *fakeRows) Close() { f.closeCalled = true }
+func (f *fakeRows) Close()     { f.closeCalled = true }
 func (f *fakeRows) Err() error { return f.err }
 
 type fakeQuerier struct {
-	rows Rows
-	err error
+	rows        Rows
+	err         error
 	capturedSQL string
 }
 
@@ -53,7 +53,7 @@ func (f *fakeQuerier) Query(ctx context.Context, sql string, args ...any) (Rows,
 }
 
 type fakeZoneBreaker struct {
-	state gobreaker.State
+	state   gobreaker.State
 	execErr error
 }
 

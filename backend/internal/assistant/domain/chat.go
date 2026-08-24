@@ -10,12 +10,12 @@ import (
 const (
 	MessageMinRunes    = 1
 	MessageMaxRunes    = 4000
-	LimitMin           = 1
-	LimitMax           = 20
-	MinMinutesMin      = 1
-	MinMinutesMax      = 1440
-	DefaultMinMinutes  = 20
-	DefaultLimit       = LimitMax
+	LimitMin           = shared.StoppedLimitMin
+	LimitMax           = shared.StoppedLimitMax
+	MinMinutesMin      = shared.StoppedMinMinutesMin
+	MinMinutesMax      = shared.StoppedMinMinutesMax
+	DefaultMinMinutes  = shared.StoppedMinMinutesDefault
+	DefaultLimit       = shared.StoppedLimitDefault
 )
 
 var ErrValidation = shared.ErrValidation
