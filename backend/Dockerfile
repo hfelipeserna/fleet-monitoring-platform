@@ -7,12 +7,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ingest ./cmd/ingest && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/consumer ./cmd/consumer
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/consumer ./cmd/consumer && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM alpine:3.20 AS runtime
 RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
-COPY --from=builder /out/ingest /out/consumer /usr/local/bin/
+COPY --from=builder /out/ingest /out/consumer /out/api /usr/local/bin/
 COPY migrations /app/migrations
 RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
 USER app

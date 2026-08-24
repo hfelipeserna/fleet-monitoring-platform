@@ -114,6 +114,22 @@ Por qué falla: Plan §7 exige migrator único con `pg_advisory_lock` (ADR-0002)
 Refactor exigido: Documentado como deuda media aprobada para Step1 (VO+DDL sin app); exigir `migrate` job único con `SELECT pg_advisory_lock` y test `EXPLAIN (FORMAT JSON) ST_Within(...::geometry ...)` en Step2 antes de cerrar pg reader. Registrado en IAUDIT y plan §12 gates.
 Auditor: db-auditor | architect
 
+## 2026-08-24 — Auditoría: fleet/pg Reader unsafe/reflect + QueryService CC 40 [SPEC-002 Step2]
+Severidad: alta
+Hallazgo: IA generó `pg/reader.go` con `pool any` + `reflect` + `unsafe.Pointer` para espiar `querySQL` de mock y `application/query.go` con `LastPositions` 197L CC 38 con loops `filtered`, magic `limit==2` y dead stores `hasMore`, `already`. `healthz` hardcodeaba `breaker closed/nats connected/db ok`.
+Evidencia: backend/internal/fleet/adapters/pg/reader.go:19-21,50-68,71-89 (pre 6850b4f), backend/internal/fleet/application/query.go:74-270, backend/internal/fleet/adapters/http/handler.go:253-255, reviewer ses_fcbf89ab
+Por qué falla: `unsafe` rompe type-safety y DIP (adapter conoce campos privados de mock), `reflect` O(n) por query, `CC 38 >>10` viola quality-auditor hot path y hace paginación O(n) en memoria en lugar de O(log n) index scan. `limit==2` hardcode rompe `limit 100` AC-001. `healthz` siempre 200 oculta breaker open.
+Refactor exigido: Definida `Querier interface` con `Reader{db Querier}` + `PgxPoolAdapter`, delegación directa `reader LastPositions(limit+1)` sin filtrado memoria, helpers `validateLimit/validatePlateStr/validateCursor/roundPositions` CC<=5, `OpsProvider` para healthz real con `503 Retry-After:5`, `Round6` centralizado en `shared/domain/geo.go`. Tests `go test ./internal/fleet/...` PASS, `go vet` 0. Commit Step2 refactor.
+Auditor: reviewer | quality-auditor | architect
+
+## 2026-08-24 — Auditoría: fleet query next_cursor falso positivo + tuple OR vs tuple [SPEC-002 Step2]
+Severidad: media
+Hallazgo: IA implementó `if len==limit { next=EncodeCursor(last) }` generando cursor aunque `SELECT LIMIT 101` devolvió exactamente 100 sin fila 101 (no hay más páginas) → paginación infinita O(p+1). Y `WHERE (plate > $1 OR (plate=$1 AND received_at < $2))` con `OR` impide `Index Scan` sobre `(plate, received_at DESC)`; con 10k devices ×1Hz×7d=6B filas hace `BitmapOr` O(n) ~300ms vs O(log n) 5ms.
+Evidencia: backend/internal/fleet/application/query.go:89-92,119-122, backend/internal/fleet/adapters/pg/reader.go:94, quality-auditor ses_fcbf709
+Por qué falla: Violación corrección paginación y NFR-001 p95 <150ms. `OR` degada a seq scan hypertable; cursor falso fuerza +1 RTT por cliente.
+Refactor exigido: Eliminado bloque `len==limit`, solo `len>limit` genera next con `rounded[:limit]`. Cambiado a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC` y documentado índice `telemetry_plate_received_at_idx`. Test `TestQueryService_LastPositions/limit 2` ajustado a 3 posiciones para validar limit+1. `EXPLAIN` futuro debe assert `Index Scan`. Commit Step2.
+Auditor: quality-auditor | db-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

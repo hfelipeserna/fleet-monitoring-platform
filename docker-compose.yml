@@ -60,6 +60,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/migrations/0001_telemetry.sql:/docker-entrypoint-initdb.d/0001_telemetry.sql:ro
+      - ./backend/migrations/0002_fleet_zones.sql:/docker-entrypoint-initdb.d/0002_fleet_zones.sql:ro
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
@@ -68,6 +69,36 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: fleet-api:local
+    command: ["/usr/local/bin/api"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleet}:${POSTGRES_PASSWORD:-fleet}@timescaledb:5432/${POSTGRES_DB:-fleet}?sslmode=disable
+      NATS_URL: nats://nats:4222
+      API_PORT: 8080
+      SSE_HEARTBEAT: 15s
+      DB_TIMEOUT: 2s
+    ports:
+      - "127.0.0.1:8083:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz | grep -q status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
       start_period: 10s
 
   ingest:
@@ -137,6 +168,8 @@ services:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       ingest:
+        condition: service_healthy
+      api:
         condition: service_healthy
     networks: [fleet]
     restart: unless-stopped
