@@ -1,0 +1,6 @@
+title = "gitleaks config for fleet-monitoring-platform"
+
+[allowlist]
+  description = "false positive p95 latency metric"
+  paths = ['README.md']
+  regexes = ['p95_latency_ms']
