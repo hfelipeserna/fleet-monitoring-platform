@@ -178,6 +178,22 @@ Por qué falla: GIST per-chunk no permite chunk pruning con `<= now()-20m` open-
 Refactor exigido: Creada migración `0004_telemetry_speed_geom.sql` con `telemetry_speed0_received_at_idx (received_at DESC) WHERE speed=0` y `telemetry_speed0_geom_idx GIST ((geom::geometry)) WHERE speed=0`, documentado `EXPLAIN` debe mostrar `BitmapAnd` no `Seq Scan`, ventana `received_at > now()-24h` como deuda para ADR, `LATERAL` vs `DISTINCT ON` anotado, `statement_timeout 2s` + breaker en tools layer. Escalable con límites MVP 1k/30d, quiebre >5k/90d.
 Auditor: scalability | db-auditor | architect
 
+## 2026-08-24 — Auditoría: assistant/genkit ValidateAllowlist fail-open + bypass validation [SPEC-003 Step4]
+Severidad: alta
+Hallazgo: IA generó `assistant/adapters/genkit/guard.go:59-86` con `ValidateAllowlist` fail-open (`if val==nil || len(allowed)==0 => nil`) y `flow.go:126-163` que llamaba `querier.FindStoppedInZones` sin `ValidateStoppedParams` ni `IsValidUUID` ni clamp `limit 10000`, y `flow.go:188-189` con `p, _ := shared.ParsePlate(s)` ignorando error. Además `guard.go:15` usaba `type contextKey string` colisionable.
+Evidencia: backend/internal/assistant/adapters/genkit/guard.go:59-92, flow.go:126-189 (pre fix), reviewer ses_fc9ef94f, security ses_fc9ee9a4
+Por qué falla: OWASP ASVS 4.1.3 Broken Access Control (atacante sin JWT enumera todas las zonas), OWASP API4 Unrestricted Resource Consumption (LLM inyecta limit 10000 → scan hypertable), BR-002/BR-009 allowlist y validación en código nunca delegada al LLM.
+Refactor exigido: `guard.go` cambiado a `type claimsKey struct{}` + `ValidateAllowlist` fail-closed (`zoneID !=nil && (val==nil||len==0) => 403`), aplicado a todos los tools, `flow.go` parsea args vía `shared.ValidateStoppedParams` y `shared.ParsePlate` con `fmt.Errorf(...%w)` + clamp, helpers `parseFindStoppedArgs`/`handle*` y registry `map[string]ToolHandler` OCP, `go test` 12/12 PASS. Commit Step4.
+Auditor: reviewer | security | architect
+
+## 2026-08-24 — Auditoría: assistant/genkit god function CC18 + semaphore default + breaker + sqlRegex estrecha [SPEC-003 Step4]
+Severidad: alta
+Hallazgo: IA generó `flow.go:81-219` con `Chat()` 138L CC>18 con 6 responsabilidades (validación, semáforo, delay, heurística Contains, coerción any→typed, allowlist, query, Validate, build reply), `select {case sem<-: default:503}` fail-fast inalcanzable para timeoutCtx, sin `gobreaker` (solo sem 20 + timeout 15s), `guard.go:23` sqlRegex solo `DROP TABLE|SELECT *|INSERT INTO|BEGIN;`, `SystemPrompt` sin delimitadores, `CurrentSemaphoreCount() len(sem)` data race, y `tools.go` sin consts ni `ToolHandler` registry.
+Evidencia: backend/internal/assistant/adapters/genkit/flow.go:81-230, guard.go:23, quality-auditor ses_fc9ee9a2, security ses_fc9ee9a4, scalability ses_fc9ee9a1
+Por qué falla: SRP/CC>10 impide testeo `2^17` paths, `default` hace backpressure incorrecto (21 concurrentes → 503 storm vs cola TTL), sin breaker `20 slots *15s` = cascada DB, regex SQL narrow bypasea `DELETE/UNION/UPDATE/OR 1=1`, OOM free tier 10 RPM sin breaker.
+Refactor exigido: Extraídos `acquire/resolveToolCall/parseFindStoppedArgs/handleFindStopped` + registry `map[string]ToolHandler`, semáforo blocking `select {case sem<-: case <-timeoutCtx.Done():}` sin `default` + `atomic.Int32` count, `gobreaker.CircuitBreaker{Name:"gemini", 50% 30s}` wrap cada querier, sqlRegex ampliada `drop|delete|update|union|or 1=1|--`, `SystemPrompt` endurecido con delimitadores, `MaxOutputTokens 1024` env-tunable documentado. `go test 12/12 PASS 15s`, `go vet 0`, CC<10. Commit Step4.
+Auditor: quality-auditor | security | scalability | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
