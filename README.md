@@ -200,3 +200,25 @@ Tags: `//go:build integration` para tests que tocan NATS/TimescaleDB; sin tag co
 | [ADR-0006](docs/adr/0006-ingest-load-balancer.md) | LB + rate limiting dual | `12 evt/min burst 20` online + `1 batch/5s 500/30s` offline → `429`; `PublishAsyncMaxPending` / `jetstream_bytes>=80%` / breaker → `503` distinto. |
 
 Ver `docs/adr/` y `docs/PRUEBA-TECNICA.md` sec. 4.A.
+
+## Auditoría de IA — Exoesqueleto, no muleta
+
+> Requisito del entregable: al menos 2 decisiones donde la IA sugirió un enfoque deficiente y se forzó el estándar. Bitácora completa en [`docs/IAUDIT.md`](docs/IAUDIT.md).
+
+### Caso 1 — Polígono sin cierre obligatorio y sin límite de vértices [SPEC-002]
+
+**Hallazgo IA:** el asistente generó `PolygonGeometry` con `coordinates` sin validar `first==last`, aceptando 3 posiciones para triángulo (`[[a,b],[c,d],[e,f]]`) y sin tope de vértices ni `ST_Area>0`. El `CHECK` de `critical_zones` era solo `ST_IsValid(geom)`.
+
+**Por qué falla:** GeoJSON RFC 7946 exige LinearRing cerrado `first==last` y `>=4` posiciones; una línea degenerada `[[0,0],[1,0],[0,0]]` con área 0 es `ST_IsValid=true` pero no es zona. Sin `ST_NPoints<=101` un polígono de 10k coords es DoS para `GIST` y `ST_Within` (O(n) por punto) y rompe NFR-001.
+
+**Decisión forzada (architect):** `BR-002` reescrita a `first==last, 4..101 coords (<=100 vértices), SRID 4326, ST_Area>0, ST_IsValid`. Contrato OpenAPI `minItems:4 maxItems:101` + `CHECK(ST_Area>0 AND ST_NPoints BETWEEN 4 AND 101)` + validación Go en 2 capas (`ST_Area==0 ->400` antes de SQL). Mermaid y `AC-003/TS-003` ahora cubren `>101 coords ->400` y `área 0 colineal ->400`. Ver `docs/IAUDIT.md#2026-08-24-poligono`.
+
+### Caso 2 — Detector `stopped >20m in zone` como ticker del dashboard [SPEC-002 → SPEC-003]
+
+**Hallazgo IA:** el asistente propuso `FR-005` como detector continuo `ticker 30s -> SELECT ST_Within ... speed=0 >20m -> Publish alerts.critical` y lo modeló como `Flow 2` de `SPEC-002` con `Nats-Msg-Id=plate:zone:bucket`.
+
+**Por qué falla:** `PRUEBA-TECNICA.md sec 4.B` formula `¿vehículos >20m en zonas críticas?` como **consulta del chat** (Genkit tool bajo demanda), no como alerta push del dashboard. Acoplarlo al `SSE /api/alerts` crea una regla de negocio que parece endpoint, duplica la fuente de verdad (mapa vs agente) y obliga a retener `hour` de histórico para cada tick.
+
+**Decisión forzada (architect):** eliminado `Flow 2` de `SPEC-002`; `SSE /api/alerts` queda genérico (`alerts.critical {plate, alert_type}`) con `dedup Nats-Msg-Id` de 2m. La evaluación `ST_Within + >20m` se mueve a `SPEC-003` como tool read-only `findVehiclesStoppedInCriticalZones(durationMin, zoneId)` que consulta `GET /api/zones` canónico. `BR-001/BR-004` y `AC-005` reescritos a alerta genérica. Ver `docs/IAUDIT.md#2026-08-24-detector`.
+
+Ver `docs/adr/` y `docs/PRUEBA-TECNICA.md` sec. 4.A.

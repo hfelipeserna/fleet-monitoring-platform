@@ -1,0 +1,542 @@
+openapi: 3.1.0
+info:
+  title: Fleet Read API - Platform BFF
+  version: 0.3.0
+  description: |
+    Read edge BFF `cmd/api`. Única superficie pública para SPA (ADR-0003 cond.9: SPA nunca toca DB/NATS/Genkit). Semántica: GET /api/fleet/positions?plate devuelve última posición por placa (sin plate=todos, con plate=solo ese) con keyset, GET /api/fleet/positions/stream SSE fleet:position en tiempo real (sin plate=todos, con plate=solo ese; toggle "Ver todos"), GET /api/zones GeoJSON canónico para Leaflet overlay y futura tool Genkit ST_Within, GET /api/alerts SSE 4 tipos zone_enter|zone_exit|speeding_on|speeding_off con front traduce a "GTP980 entra en zona.../sale/superando 80/vuelve a <80". Tiles OSM directos web->OSM nunca proxy. Placa colombiana ^[A-Z]{3}[0-9]{3}$.
+  license:
+    name: Proprietary
+    identifier: UNLICENSED
+servers:
+  - url: http://localhost:8080
+    description: local via LB /api -> api:8080
+  - url: http://api:8080
+    description: direct api
+security: []
+tags:
+  - name: fleet
+    description: Fleet read operations
+  - name: zones
+    description: Critical zones GeoJSON
+  - name: alerts
+    description: SSE alerts
+  - name: ops
+    description: Operational probes
+paths:
+  /api/fleet/positions:
+    get:
+      summary: Last known position per plate (keyset, no OFFSET) - sin plate=todos, con plate=solo ese
+      operationId: listFleetPositions
+      tags: [fleet]
+      security: []
+      parameters:
+        - name: plate
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{3}$'
+            description: "Filtro opcional: sin plate = flota completa en tiempo real (snapshot), con plate=GTP980 = solo ese carro; toggle Ver todos reconecta sin plate"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            description: base64(plate|received_at RFC3339) opaque
+      responses:
+        '200':
+          description: Page of last positions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [vehicles]
+                properties:
+                  vehicles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VehiclePosition'
+                  next_cursor:
+                    type: ["string", "null"]
+                    description: opaque cursor for next page
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/fleet/positions/stream:
+    get:
+      summary: SSE fleet positions in real time (todos vs. solo una placa)
+      operationId: streamFleetPositions
+      tags: [fleet]
+      security: []
+      parameters:
+        - name: plate
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{3}$'
+            description: "Sin plate = todos los carros en tiempo real (pinta todos), con plate=GTP980 = solo ese carro; frontend filtra o reconecta"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            description: NATS sequence for replay
+      responses:
+        '200':
+          description: text/event-stream fleet:position
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-cache
+            X-Accel-Buffering:
+              schema:
+                type: string
+              example: no
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "SSE framing: id: <seq>\\nevent: fleet:position\\ndata: {plate,lat,lon,speed,received_at}\\n\\n + :ping 15s + retry: 5000; sin plate=todos, con plate=solo ese"
+                example: "retry: 5000\nid: 124\nevent: fleet:position\ndata: {\"plate\":\"GTP980\",\"lat\":4.711,\"lon\":-74.07,\"speed\":42}\n\n:ping\n\n"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/vehicles/{plate}:
+    get:
+      summary: Last position for single plate (shorthand for fleet/positions?plate=)
+      operationId: getVehicle
+      tags: [fleet]
+      security: []
+      parameters:
+        - name: plate
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{3}$'
+      responses:
+        '200':
+          description: Single vehicle last position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehiclePosition'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/vehicles/{plate}/history:
+    get:
+      summary: History for plate ordered received_at DESC keyset
+      operationId: getVehicleHistory
+      tags: [fleet]
+      security: []
+      parameters:
+        - name: plate
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}[0-9]{3}$'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: History page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  points:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HistoryPoint'
+                  next_cursor:
+                    type: ["string", "null"]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/zones:
+    get:
+      summary: List critical zones as GeoJSON FeatureCollection (canon)
+      operationId: listZones
+      tags: [zones]
+      security: []
+      responses:
+        '200':
+          description: FeatureCollection Polygon SRID 4326
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZonesFeatureCollection'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+    post:
+      summary: Create critical zone Polygon
+      operationId: createZone
+      tags: [zones]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateZoneRequest'
+      responses:
+        '201':
+          description: Created Feature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZoneFeature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/zones/{id}:
+    put:
+      summary: Update zone
+      operationId: updateZone
+      tags: [zones]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateZoneRequest'
+      responses:
+        '200':
+          description: Updated Feature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZoneFeature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+    delete:
+      summary: Delete zone
+      operationId: deleteZone
+      tags: [zones]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /api/alerts:
+    get:
+      summary: SSE alerts stream (alert:critical 4 tipos) with Last-Event-ID replay
+      operationId: streamAlerts
+      tags: [alerts]
+      security: []
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            description: NATS sequence for replay
+      responses:
+        '200':
+          description: text/event-stream 4 tipos front traduce
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-cache
+            X-Accel-Buffering:
+              schema:
+                type: string
+              example: no
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "SSE framing: id: <seq>\\nevent: alert:critical\\ndata: {plate,alert_type: zone_enter|zone_exit|speeding_on|speeding_off, zone_id?,zone_name?,lat,lon,speed}\\n\\n + :ping 15s + retry: 5000; front traduce zone_enter->\"GTP980 entra en zona...\", speeding_on->\"superando 80Km/h\""
+                example: "retry: 5000\nid: 123\nevent: alert:critical\ndata: {\"plate\":\"GTP980\",\"alert_type\":\"zone_enter\",\"zone_name\":\"Norte\"}\n\n:ping\n\n"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Backpressure'
+  /healthz:
+    get:
+      summary: Health + breaker/nats/db
+      operationId: healthz
+      tags: [ops]
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  breaker:
+                    type: string
+                    example: closed
+                  nats:
+                    type: string
+                    example: connected
+                  db:
+                    type: string
+                    example: ok
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      tags: [ops]
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Placeholder reservado MVP security: [] ; futuro JWT scopes por flota"
+  schemas:
+    VehiclePosition:
+      type: object
+      required: [plate, speed, received_at, status]
+      properties:
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+          example: GTP890
+        lat:
+          type: ["number", "null"]
+          minimum: -90
+          maximum: 90
+          example: 4.711
+          description: nullable GPS fail, 6 dec max
+        lon:
+          type: ["number", "null"]
+          minimum: -180
+          maximum: 180
+          example: -74.072
+        speed:
+          type: integer
+          minimum: 0
+          example: 0
+        received_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [moving, idle, alert]
+          example: alert
+        zone_id:
+          type: ["string", "null"]
+          format: uuid
+          description: zone triggering alert if status=alert
+    HistoryPoint:
+      type: object
+      required: [received_at, speed]
+      properties:
+        lat:
+          type: ["number", "null"]
+        lon:
+          type: ["number", "null"]
+        speed:
+          type: integer
+          minimum: 0
+        received_at:
+          type: string
+          format: date-time
+        occurred_at:
+          type: ["string", "null"]
+          format: date-time
+    ZonesFeatureCollection:
+      type: object
+      required: [type, features]
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZoneFeature'
+    ZoneFeature:
+      type: object
+      required: [type, id, properties, geometry]
+      properties:
+        type:
+          type: string
+          enum: [Feature]
+        id:
+          type: string
+          format: uuid
+        properties:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 100
+              example: Zona Norte
+        geometry:
+          $ref: '#/components/schemas/PolygonGeometry'
+    PolygonGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          maxItems: 1
+          description: "Exterior ring único (sin holes MVP). Ring cerrado first==last 4..101 coords (<=100 vértices), lon,lat SRID 4326, ST_IsValid true y ST_Area>0 (línea/colineal >101 rechazado 400)"
+          items:
+            type: array
+            minItems: 4
+            maxItems: 101
+            items:
+              type: array
+              items:
+                type: number
+              minItems: 2
+              maxItems: 2
+          example: [[[-74.07,4.71],[-74.05,4.71],[-74.05,4.73],[-74.07,4.73],[-74.07,4.71]]]
+    CreateZoneRequest:
+      type: object
+      required: [name, geojson]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        geojson:
+          $ref: '#/components/schemas/PolygonGeometry'
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: validation
+              details:
+                type: array
+                items:
+                  type: string
+    RateLimited:
+      description: Rate limited 10/min IP for writes
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          example: 5
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: rate_limited
+    Backpressure:
+      description: Infra saturated breaker open or DB timeout
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          example: 5
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: backpressure
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: not_found
