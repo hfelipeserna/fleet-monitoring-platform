@@ -186,7 +186,7 @@ Trazabilidad `TS -> TEST` 1:1, `//go:build integration` gate, `go test ./... -ra
 
 ## 11.1 TDD — Red-Green-Refactor por Step (obligatorio, como SPEC-001)
 
-> Inspirado en SPEC-001 (TEST-004 unit domain primero, luego ingest/consumer). Cada Step arranca con tests unitarios **RED** que citan su `AC-XXX` y `BR-XXX`, luego implementación **GREEN** mínima, luego **REFACTOR** auditado por `quality-auditor` (CC<=10, DRY, O-notation). Patrón AAA (`// Arrange // Act // Assert`) y trazabilidad `// AC-XXX` en cada caso. `test-engineer` genera tests, `go-backend`/`data-events` no implementa sin test rojo previo.
+> Inspirado en SPEC-001 (`TestTelemetryEvent` + `TestIngestService_IngestSingle/Batch` con **suites `t.Run`** por comportamiento). Cada Step arranca con tests unitarios **RED** en **suites organizadas por comportamiento** (`func TestZoneValidate(t *testing.T){ t.Run("cerrado OK",...), t.Run("no cerrado",...) }`, igual `TestVehiclePosValidate`, `TestAlertValidate`, `TestLastPositions`, etc.) que citan su `AC-XXX` y `BR-XXX`, luego implementación **GREEN** mínima, luego **REFACTOR** auditado por `quality-auditor` (CC<=10, DRY, O-notation). Patrón AAA obligatorio (`// Arrange // Act // Assert`) en cada `t.Run` y trazabilidad `// Covers [SPEC-002: AC-XXX, BR-XXX]` + `// AC-XXX` en asserts. `test-engineer` genera suites, `go-backend`/`data-events` no implementa sin suite roja previa.
 
 | Step | TDD Test File (unit, RED primero) | Casos AAA que dirigen implementación (citando AC/BR) | AC/BR trace | Gate |
 |------|-----------------------------------|-------------------------------------------------------|-------------|------|
