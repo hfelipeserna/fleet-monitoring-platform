@@ -49,7 +49,10 @@ services:
     logging: *default-logging
 
   timescaledb:
-    image: timescale/timescaledb:latest-pg15
+    build:
+      context: .
+      dockerfile: infra/timescaledb/Dockerfile
+    image: fleet-timescaledb:local
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-fleet}
       POSTGRES_USER: ${POSTGRES_USER:-fleet}
@@ -58,7 +61,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - ./backend/migrations/0001_telemetry.sql:/docker-entrypoint-initdb.d/0001_telemetry.sql:ro
       - ./backend/migrations/0002_fleet_zones.sql:/docker-entrypoint-initdb.d/0002_fleet_zones.sql:ro
     networks: [fleet]

@@ -220,6 +220,7 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 		_ = nc.Drain()
 		return nil, fmt.Errorf("pgxpool failed: %w", err)
 	}
+	_, _ = pool.Exec(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS critical_zones_name_unique ON critical_zones (lower(name))`)
 	// separate breakers: fleet-read for queries and fleet-zone for writes isolate failure domains
 	// zone failures must not trip read circuit and vice versa
 	adapter := fleetpg.NewPgxPoolAdapter(pool)

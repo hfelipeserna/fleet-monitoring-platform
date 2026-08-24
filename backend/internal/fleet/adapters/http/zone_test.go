@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -568,6 +569,112 @@ func TestZonesHandler(t *testing.T) {
 		bodyStr := strings.ToLower(lastRec.Body.String())
 		if !strings.Contains(bodyStr, "rate") && !strings.Contains(bodyStr, "limit") {
 			t.Fatalf("expected rate_limited payload, got %s", lastRec.Body.String())
+		}
+	})
+
+	t.Run("POST duplicate name -> 409 (crea Norte, luego POST mismo name distinto geom -> 409)", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		coords1 := validPolygon()
+		coords2 := [][]float64{
+			{-74.06, 4.72},
+			{-74.04, 4.72},
+			{-74.04, 4.74},
+			{-74.06, 4.74},
+			{-74.06, 4.72},
+		}
+		svc := &mockZoneService{
+			createFn: func(name string, coords [][]float64) (fleet.Zone, error) {
+				return fleet.Zone{}, fmt.Errorf("duplicate zone name: %w", errors.Join(shared.ErrValidation, fleet.ErrDuplicateZoneName, fmt.Errorf("critical_zones_name_unique")))
+			},
+		}
+		h := buildZoneHandler(svc)
+		// first create would be 201 but we simulate duplicate on second POST
+		body := zonePayload("Norte", coords2)
+		_ = coords1
+		req := httptest.NewRequest(http.MethodPost, "/api/zones", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "192.168.1.11:1234"
+		rec := httptest.NewRecorder()
+
+		// Act
+		h.ServeHTTP(rec, req)
+
+		// Assert
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 for duplicate name POST, got %d body %s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Retry-After"); got != "" {
+			t.Fatalf("expected no Retry-After for 409, got %q", got)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("expected json body, got %q", rec.Body.String())
+		}
+		if payload["error"] != "zone name already exists" {
+			t.Fatalf("expected error zone name already exists, got %v body %s", payload["error"], rec.Body.String())
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Fatalf("expected json content-type, got %q", ct)
+		}
+	})
+
+	t.Run("PUT duplicate name -> 409 (crea Zona A y B, PUT B con name de A -> 409)", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		idB := "550e8400-e29b-41d4-a716-446655440030"
+		svc := &mockZoneService{
+			updateFn: func(id string, name string, coords [][]float64) (fleet.Zone, error) {
+				return fleet.Zone{}, fmt.Errorf("duplicate zone name: %w", errors.Join(shared.ErrValidation, fleet.ErrDuplicateZoneName, fmt.Errorf("critical_zones_name_unique")))
+			},
+		}
+		h := buildZoneHandler(svc)
+		body := zonePayload("Zona A", validPolygon())
+		req := httptest.NewRequest(http.MethodPut, "/api/zones/"+idB, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "192.168.1.12:1234"
+		rec := httptest.NewRecorder()
+
+		// Act
+		h.ServeHTTP(rec, req)
+
+		// Assert
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 for duplicate name PUT, got %d body %s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Retry-After"); got != "" {
+			t.Fatalf("expected no Retry-After for 409 PUT, got %q", got)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("expected json, got %q", rec.Body.String())
+		}
+		if payload["error"] != "zone name already exists" {
+			t.Fatalf("expected zone name already exists, got %v", payload["error"])
+		}
+	})
+
+	t.Run("POST duplicate name case-insensitive -> 409", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		svc := &mockZoneService{
+			createFn: func(name string, coords [][]float64) (fleet.Zone, error) {
+				return fleet.Zone{}, fmt.Errorf("duplicate zone name: %w", errors.Join(shared.ErrValidation, fleet.ErrDuplicateZoneName, fmt.Errorf("lower(name) duplicate")))
+			},
+		}
+		h := buildZoneHandler(svc)
+		body := zonePayload("norte", validPolygon())
+		req := httptest.NewRequest(http.MethodPost, "/api/zones", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "192.168.1.13:1234"
+		rec := httptest.NewRecorder()
+
+		// Act
+		h.ServeHTTP(rec, req)
+
+		// Assert
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 case-insensitive, got %d body %s", rec.Code, rec.Body.String())
 		}
 	})
 }

@@ -226,6 +226,9 @@ func mapZoneError(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
+	if errors.Is(err, fleet.ErrDuplicateZoneName) {
+		return http.StatusConflict
+	}
 	if errors.Is(err, fleet.ErrNotFound) {
 		return http.StatusNotFound
 	}
@@ -241,6 +244,8 @@ func mapZoneError(err error) int {
 func handleZoneError(w http.ResponseWriter, err error) bool {
 	code := mapZoneError(err)
 	switch code {
+	case http.StatusConflict:
+		writeJSON(w, code, map[string]string{"error": "zone name already exists"})
 	case http.StatusServiceUnavailable:
 		w.Header().Set("Retry-After", "5")
 		writeJSON(w, code, map[string]string{"error": "unavailable", "message": "service unavailable"})

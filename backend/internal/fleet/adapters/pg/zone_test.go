@@ -3,12 +3,16 @@ package pg_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	fleetpg "fleetmonitoring/backend/internal/fleet/adapters/pg"
 	fleet "fleetmonitoring/backend/internal/fleet/domain"
+	shared "fleetmonitoring/backend/internal/shared/domain"
 )
 
 // fakeZoneDB simulates Querier for zone persistence; records SQL and validates GeoJSON handling.
@@ -423,6 +427,79 @@ func TestZoneRepository(t *testing.T) {
 		// Assert
 		if err == nil {
 			t.Fatal("expected 404 error for DELETE random UUID")
+		}
+	})
+
+	t.Run("Create duplicate name case-insensitive -> 409 via 23505 critical_zones_name_unique", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "critical_zones_name_unique", Message: `duplicate key value violates unique constraint "critical_zones_name_unique"`}
+		db := &fakeZoneDB{execErr: pgErr}
+		repo := fleetpg.NewZoneRepository(db)
+		zone := fleet.Zone{ID: "550e8400-e29b-41d4-a716-446655440020", Name: "Norte", Coordinates: validZoneCoords()}
+		ctx := context.Background()
+
+		// Act
+		_, err := repo.Create(ctx, zone)
+
+		// Assert
+		if err == nil {
+			t.Fatal("expected duplicate name error")
+		}
+		if !errors.Is(err, fleet.ErrDuplicateZoneName) {
+			t.Fatalf("expected errors.Is duplicate, got %v", err)
+		}
+		if !errors.Is(err, shared.ErrValidation) {
+			t.Fatalf("expected validation join, got %v", err)
+		}
+		if !errors.Is(err, fleetpg.ErrDuplicateZoneName) {
+			t.Fatalf("expected pg ErrDuplicateZoneName, got %v", err)
+		}
+	})
+
+	t.Run("Update duplicate name -> 409 via 23505 Message contains", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		pgErr := &pgconn.PgError{Code: "23505", Message: `duplicate key value violates unique constraint "critical_zones_name_unique" (lower(name))`}
+		db := &fakeZoneDB{execErr: pgErr}
+		repo := fleetpg.NewZoneRepository(db)
+		id := "550e8400-e29b-41d4-a716-446655440021"
+		zone := fleet.Zone{ID: id, Name: "Norte", Coordinates: validZoneCoords()}
+		ctx := context.Background()
+
+		// Act
+		_, err := repo.Update(ctx, id, zone)
+
+		// Assert
+		if err == nil {
+			t.Fatal("expected duplicate name error on Update")
+		}
+		if !errors.Is(err, fleet.ErrDuplicateZoneName) {
+			t.Fatalf("expected duplicate Is, got %v", err)
+		}
+		if !errors.Is(err, shared.ErrValidation) {
+			t.Fatalf("expected validation Is, got %v", err)
+		}
+	})
+
+	t.Run("Create duplicate emits lower(name) index name in error chain", func(t *testing.T) {
+		// Covers [SPEC-002: AC-003, BR-002] 409
+		// Arrange
+		pgErr2 := &pgconn.PgError{Code: "23505", ConstraintName: "", Message: "critical_zones_name_unique"}
+		db := &fakeZoneDB{execErr: pgErr2}
+		repo := fleetpg.NewZoneRepository(db)
+		zone := fleet.Zone{ID: "550e8400-e29b-41d4-a716-446655440022", Name: "norte", Coordinates: validZoneCoords()}
+		ctx := context.Background()
+
+		// Act
+		_, err := repo.Create(ctx, zone)
+
+		// Assert
+		if err == nil {
+			t.Fatal("expected duplicate error via Message")
+		}
+		if !errors.Is(err, fleet.ErrDuplicateZoneName) {
+			t.Fatalf("expected duplicate via message, got %v", err)
 		}
 	})
 }

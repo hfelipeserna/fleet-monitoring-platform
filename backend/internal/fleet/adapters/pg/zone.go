@@ -18,12 +18,24 @@ type ZoneDB interface {
 	Exec(ctx context.Context, sql string, args ...any) (int64, error)
 }
 
+var ErrDuplicateZoneName = fleet.ErrDuplicateZoneName
+
 type ZoneRepository struct {
 	db ZoneDB
 }
 
 func NewZoneRepository(db ZoneDB) *ZoneRepository {
 	return &ZoneRepository{db: db}
+}
+
+func isDuplicateZoneError(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if strings.Contains(pgErr.ConstraintName, "critical_zones_name_unique") || strings.Contains(pgErr.Message, "critical_zones_name_unique") {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *PgxPoolAdapter) Exec(ctx context.Context, sql string, args ...any) (int64, error) {
@@ -57,6 +69,9 @@ func (r *ZoneRepository) Create(ctx context.Context, z fleet.Zone) (fleet.Zone, 
 	sql := `INSERT INTO critical_zones (id, name, geom) VALUES ($1, $2, ST_SetSRID(ST_GeomFromGeoJSON($3),4326))`
 	tag, err := r.db.Exec(ctx, sql, z.ID, z.Name, string(b))
 	if err != nil {
+		if isDuplicateZoneError(err) {
+			return fleet.Zone{}, fmt.Errorf("duplicate zone name: %w", errors.Join(shared.ErrValidation, ErrDuplicateZoneName, err))
+		}
 		if ve := mapCheckError(err); ve != nil {
 			return fleet.Zone{}, ve
 		}
@@ -131,6 +146,9 @@ func (r *ZoneRepository) Update(ctx context.Context, id string, z fleet.Zone) (f
 	sql := `UPDATE critical_zones SET name=$2, geom=ST_SetSRID(ST_GeomFromGeoJSON($3),4326) WHERE id=$1`
 	tag, err := r.db.Exec(ctx, sql, id, z.Name, string(b))
 	if err != nil {
+		if isDuplicateZoneError(err) {
+			return fleet.Zone{}, fmt.Errorf("duplicate zone name: %w", errors.Join(shared.ErrValidation, ErrDuplicateZoneName, err))
+		}
 		if ve := mapCheckError(err); ve != nil {
 			return fleet.Zone{}, ve
 		}
