@@ -36,7 +36,7 @@ docker compose --profile docs up structurizr  # http://localhost:8080 -> Contene
 
 > Secrets vía `.env` (nunca en git). Ver `.env.example`.
 
-## Quickstart (SPEC-001)
+## Quickstart
 
 ```bash
 cp .env.example .env
@@ -44,15 +44,24 @@ cp .env.example .env
 
 docker compose up --build --wait
 docker compose ps
-curl -s http://localhost:8080/healthz | jq
-# {"status":"ok","breaker":"closed","jetstream":"connected"}
+# api Up (healthy) 127.0.0.1:8083->8080, lb Up (healthy) 0.0.0.0:8080->80, ingest/consumer/nats/timescaledb healthy
+curl -s http://localhost:8083/healthz | jq
+# {"status":"ok","breaker":"closed","nats":"connected","db":"total=1 idle=1"}
+curl -s http://localhost:8080/api/healthz | jq
+# vía LB (proxy_buffering off para SSE)
 
-# smoke ingest -> NATS -> consumer -> TimescaleDB
+# smoke ingest -> NATS -> consumer -> TimescaleDB (SPEC-001)
 curl -s -X POST http://localhost:8080/v1/telemetry \
   -H 'Content-Type: application/json' \
   -d '{"plate":"GTP890","speed":42,"lat":4.711,"lon":-74.072,"client_event_id":"'"$(uuidgen | tr '[:upper:]' '[:lower:]')"'","occurred_at":"2026-08-23T12:00:00Z"}' | jq
+# {"accepted":true}
 
-docker compose logs -f ingest consumer
+# smoke read BFF (SPEC-002) — requiere datos previos
+curl -s "http://localhost:8080/api/fleet/positions?limit=2" | jq
+# {"vehicles":[{"plate":"GTP980",...}],"next_cursor":"..."}
+curl -s "http://localhost:8080/api/vehicles/GTP980/history?from=2026-08-24T00:00:00Z&to=2026-08-24T23:59:59Z&limit=5" | jq
+
+docker compose logs -f ingest consumer api
 docker compose down -v  # reset volúmenes pgdata/nats_data
 ```
 
