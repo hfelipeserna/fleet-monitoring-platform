@@ -1,0 +1,2 @@
+578027a68c947aa6f5f5b4c42532382b9cf0338a:README.md:generic-api-key:128
+# false positive p95_latency_ms metric name flagged as generic-api-key - fingerprint allowlist

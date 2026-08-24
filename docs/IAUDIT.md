@@ -74,6 +74,62 @@ Por qué falla: OWASP A07 auth bypass, CIS Docker, 12-factor config vía env nun
 Refactor exigido: Eliminado trust (scram-sha-256 default, pg_isready con PGPASSWORD), consumer 127.0.0.1:8082:8081 + nginx location /internal/ {return 404;}, Grafana ${GF_SECURITY_ADMIN_*} via .env, Duplicates 2m, limit_req_zone, stop_grace 20s, 127.0.0.1 bindings, non-root USER app en Dockerfile, healthchecks. Config valida post-fix. Pendiente commit final.
 Auditor: reviewer | scalability | architect
 
+## 2026-08-24 — Auditoría: spec/zonas Polygon abierto y sin área/límite [SPEC-002]
+Severidad: media
+Hallazgo: IA generó spec inicial con `PolygonGeometry` sin cierre obligatorio (aceptaba 3 coords para triángulo `[[a,b],[c,d],[e,f]]`), sin `ST_Area>0` y sin `maxItems`, y `critical_zones` solo `CHECK(ST_IsValid(geom))`. Mermaid `B[POST /api/zones {name, geojson Polygon}]` sin comillas rompía parser.
+Evidencia: docs/specs/SPEC-002-fleet-read-zones/spec.md:144,176, plan.md:74, contracts/http.openapi.yaml:398 (pre 2026-08-24, ver git diff)
+Por qué falla: Viola RFC 7946 LinearRing `first==last` y `>=4` (triángulo son 4 pos con cierre, no 3), permite zona línea degenerada área 0 que pasa `ST_IsValid` pero `ST_Within` nunca alerta; sin `ST_NPoints<=101` permite DoS GIST O(n) y rompe NFR-001 p95; Mermaid con `{` sin quoting genera `Parse error DIAMOND_START`.
+Refactor exigido: BR-002 reescrita `first==last, 4..101 coords (<=100 vértices), SRID 4326, ST_Area>0, ST_IsValid`; OpenAPI `coordinates maxItems:1 / minItems:4 maxItems:101` + descripción `ST_Area>0`; plan `CHECK(ST_Area>0 AND ST_NPoints BETWEEN 4 AND 101)` + validación Go 2 capas `ST_Area==0 ->400`; `AC-003/TS-003` cubren `>101 ->400` y `4 coords colineales área 0 ->400`; Mermaid `B["POST ..."]` y `C{"¿...?"}` quoted. Commit spec-002 hardening.
+Auditor: architect | db-auditor
+
+## 2026-08-24 — Auditoría: spec/detector ticker como regla de negocio [SPEC-002 -> SPEC-003]
+Severidad: media
+Hallazgo: IA propuso `FR-005` detector continuo `ticker 30s SELECT ST_Within speed=0 >20m -> Publish alerts.critical Nats-Msg-Id=plate:zone:bucket` como `Flow 2` de `SPEC-002` y `AC-005` con `Given GTP890 speed0 inside zona 25m When tick`.
+Evidencia: docs/specs/SPEC-002-fleet-read-zones/spec.md:132,289,340, plan.md FR-005 (pre 2026-08-24)
+Por qué falla: PRUEBA-TECNICA sec 4.B formula `¿vehículos >20m en zonas críticas?` como consulta del chat (tool Genkit en SPEC-003), no como alerta push del dashboard; acoplarlo a `SSE /api/alerts` crea endpoint ficticio, duplica fuente de verdad mapa vs agente (ADR-0007 cond.4) y obliga a retención horaria por tick.
+Refactor exigido: Eliminado `Flow 2` detector de SPEC-002; FR-005 reescrito a `alerts.critical` genéricas `{plate, alert_type}` con dedup `Nats-Msg-Id=plate:alert_type:bucket`; BR-001 reescrito `alert` por evento SSE genérico, BR-004 `dedup Nats-Msg-Id` genérico; AC-005/TS-005 reescritos a `Publish alerts.critical genérico + SSE <2s`; secuencia `C->DB ST_Within` reemplazada por `Publisher alertas` genérico con nota `SPEC-003 tool ST_Within>20m`; `SSE` queda `Flow 2` genérico. Commit spec-002 desacoplado.
+Auditor: architect
+
+## 2026-08-24 — Auditoría: fleet/domain ErrValidation duplicado + mutación Validate [SPEC-002 Step1]
+Severidad: alta
+Hallazgo: go-backend generó fleet/domain con `var ErrValidation = errors.New("validation")` duplicado de `shared/domain ErrValidation` (dos objetos distintos) y `Validate()` mutaba `Coordinates`/`*lat/*lon` in-place (value receiver con slice header copia). `vehicle_test.go:41` espera `errors.Is(err, shared.ErrValidation)` para plate pero recibía `fleet.ErrValidation` distinto -> 400 se mapeaba a 500.
+Evidencia: backend/internal/fleet/domain/zone.go:14 (pre e89a7c2), backend/internal/shared/domain/plate.go:13, backend/internal/fleet/domain/vehicle.go:60, backend/internal/fleet/domain/geo.go:40-45, reviewer ses_fcc2bcf4
+Por qué falla: `errors.Is` con `errors.Join` exige identidad de centinela único (Go 1.20). Dos `ErrValidation` rompen clasificación HTTP 400 vs 500 y violan AGENTS.md "error wrap %w" y "interfaces consumer-side con errores tipados". Mutación viola pureza de dominio y BR-010 (precisión 6 dec debe aplicarse en adapter, no en Validate).
+Refactor exigido: `geo.go:15 var ErrValidation = shared.ErrValidation` alias único re-exportado, `vehicle.go`/`alert.go` usan `shared.ParsePlate` ya joineado; `roundCoords` documentado como mutación controlada (test `zone_test.go:240` verifica round6) y deuda registrada para futuro `Normalized()` puro. Commit Step1 GREEN.
+Auditor: reviewer | architect
+
+## 2026-08-24 — Auditoría: fleet/domain snap 0.005 + continue silencioso + CC 15 [SPEC-002 Step1]
+Severidad: media
+Hallazgo: IA propuso `validateCoordinatesCountClosure` con snap `if math.Abs(delta)<0.005 { coords[n-1]=coords[0] }` (≈550m) y `validatePolygonRange` con `if len(c)<2 { continue }` silenciando coords mal dimensionadas, y `segmentsIntersect` CC 15 con 7 ramas.
+Evidencia: backend/internal/fleet/domain/geo.go:76-78,86-90,154 (pre fix) y quality-auditor ses_fcc2bcf4 / ses_fcc29344
+Por qué falla: BR-002 exige `first==last` exacto tras `round6` (RFC 7946) y `4..101` coords; snap 0.005 enmascara polígono no cerrado que PostGIS `ST_IsValid` rechaza luego (INSERT falla tras validar Go). `continue` deja pasar `[[ -74,4 ], [0], [-74,4]]` como válido y `ST_NPoints` luego falla en DB, no en 400. CC 15 >>10 viola `quality-auditor` hot path y TDD suite `zone_test.go:138` bowtie.
+Refactor exigido: Eliminado snap (exige `coords[0]==coords[n-1]` exacto tras `roundCoords`), `len<2` ahora `return ErrCoordCount`, extraído `validateLonLat` (CC 3) y `segmentsIntersectColinear` (CC 4) para bajar `validatePolygonRange` a CC 3 y `segmentsIntersect` a CC 5. Test `zone_test.go:240` ajustado para mantener cierre exacto (seteando last = first). Commit Step1 GREEN.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: migrations 0002 sin pg_advisory_lock runner + EXPLAIN faltante [SPEC-002 Step1]
+Severidad: media
+Hallazgo: IA documentó `pg_advisory_lock(727271)` en comentario SQL pero no implementó runner Go; `IF NOT EXISTS` solo evita "already exists" pero dos réplicas `api/consumer` concurrentes hacen `CREATE INDEX IF NOT EXISTS` sin lock → `lock_timeout`/`deadlock`. Falta test `EXPLAIN` que pruebe GIST `((geom::geometry))` evita seq scan hypertable.
+Evidencia: backend/migrations/0002_fleet_zones.sql:3, backend/migrations/0001_telemetry.sql:42, grep pg_advisory 0 hits, db-auditor ses_fcc29344
+Por qué falla: Plan §7 exige migrator único con `pg_advisory_lock` (ADR-0002). Sin él, rollout `migrations 0002 -> ALERTS -> api` con 5k devices puede bloquear DDL. Sin EXPLAIN, `ST_Within(telemetry.geom, zone.geom)` sin cast `::geometry` no usa `telemetry_geom_idx` y hace seq scan `O(chunks*rows)` ~216M rows.
+Refactor exigido: Documentado como deuda media aprobada para Step1 (VO+DDL sin app); exigir `migrate` job único con `SELECT pg_advisory_lock` y test `EXPLAIN (FORMAT JSON) ST_Within(...::geometry ...)` en Step2 antes de cerrar pg reader. Registrado en IAUDIT y plan §12 gates.
+Auditor: db-auditor | architect
+
+## 2026-08-24 — Auditoría: fleet/pg Reader unsafe/reflect + QueryService CC 40 [SPEC-002 Step2]
+Severidad: alta
+Hallazgo: IA generó `pg/reader.go` con `pool any` + `reflect` + `unsafe.Pointer` para espiar `querySQL` de mock y `application/query.go` con `LastPositions` 197L CC 38 con loops `filtered`, magic `limit==2` y dead stores `hasMore`, `already`. `healthz` hardcodeaba `breaker closed/nats connected/db ok`.
+Evidencia: backend/internal/fleet/adapters/pg/reader.go:19-21,50-68,71-89 (pre 6850b4f), backend/internal/fleet/application/query.go:74-270, backend/internal/fleet/adapters/http/handler.go:253-255, reviewer ses_fcbf89ab
+Por qué falla: `unsafe` rompe type-safety y DIP (adapter conoce campos privados de mock), `reflect` O(n) por query, `CC 38 >>10` viola quality-auditor hot path y hace paginación O(n) en memoria en lugar de O(log n) index scan. `limit==2` hardcode rompe `limit 100` AC-001. `healthz` siempre 200 oculta breaker open.
+Refactor exigido: Definida `Querier interface` con `Reader{db Querier}` + `PgxPoolAdapter`, delegación directa `reader LastPositions(limit+1)` sin filtrado memoria, helpers `validateLimit/validatePlateStr/validateCursor/roundPositions` CC<=5, `OpsProvider` para healthz real con `503 Retry-After:5`, `Round6` centralizado en `shared/domain/geo.go`. Tests `go test ./internal/fleet/...` PASS, `go vet` 0. Commit Step2 refactor.
+Auditor: reviewer | quality-auditor | architect
+
+## 2026-08-24 — Auditoría: fleet query next_cursor falso positivo + tuple OR vs tuple [SPEC-002 Step2]
+Severidad: media
+Hallazgo: IA implementó `if len==limit { next=EncodeCursor(last) }` generando cursor aunque `SELECT LIMIT 101` devolvió exactamente 100 sin fila 101 (no hay más páginas) → paginación infinita O(p+1). Y `WHERE (plate > $1 OR (plate=$1 AND received_at < $2))` con `OR` impide `Index Scan` sobre `(plate, received_at DESC)`; con 10k devices ×1Hz×7d=6B filas hace `BitmapOr` O(n) ~300ms vs O(log n) 5ms.
+Evidencia: backend/internal/fleet/application/query.go:89-92,119-122, backend/internal/fleet/adapters/pg/reader.go:94, quality-auditor ses_fcbf709
+Por qué falla: Violación corrección paginación y NFR-001 p95 <150ms. `OR` degada a seq scan hypertable; cursor falso fuerza +1 RTT por cliente.
+Refactor exigido: Eliminado bloque `len==limit`, solo `len>limit` genera next con `rounded[:limit]`. Cambiado a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC` y documentado índice `telemetry_plate_received_at_idx`. Test `TestQueryService_LastPositions/limit 2` ajustado a 3 posiciones para validar limit+1. `EXPLAIN` futuro debe assert `Index Scan`. Commit Step2.
+Auditor: quality-auditor | db-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

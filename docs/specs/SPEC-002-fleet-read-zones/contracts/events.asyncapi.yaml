@@ -1,0 +1,181 @@
+asyncapi: 3.0.0
+info:
+  title: Fleet Alerts and Positions Events
+  version: 0.3.0
+  description: |
+    Streams ALERTS (4 tipos zone_enter|zone_exit|speeding_on|speeding_off) para SSE dashboard y TELEMETRY fan-out fleet:position (todos vs. ?plate) para mapa en tiempo real. Zona >20m es tool de SPEC-003, no detector aquí. Idempotencia alerts por Nats-Msg-Id=plate:alert_type:bucket. Retention ALERTS 7d para replay SSE. TELEMETRY sigue en SPEC-001; este contrato extiende con ALERTS + fleet position.
+servers:
+  nats:
+    host: nats:4222
+    protocol: nats
+    description: NATS JetStream (local docker)
+channels:
+  alertsCritical:
+    address: alerts.critical
+    description: Alertas tipadas zone_enter|zone_exit|speeding_on|speeding_off (front traduce a "GTP980 entra en zona.../sale/superando 80/vuelve a <80"). Consumida por api-sse durable dashboard. Zone >20m es tool de SPEC-003.
+    messages:
+      alertCritical:
+        $ref: '#/components/messages/AlertCritical'
+  fleetPosition:
+    address: telemetry.raw.{plate}
+    description: Posición en tiempo real para SSE fleet:position (sin plate=todos, con plate=solo ese). Fan-out desde TELEMETRY a SSE todos vs. filtrado.
+    parameters:
+      plate:
+        description: placa ^[A-Z]{3}[0-9]{3}$ o > para todos
+    messages:
+      fleetPosition:
+        $ref: '#/components/messages/FleetPosition'
+operations:
+  publishAlertCritical:
+    action: send
+    channel:
+      $ref: '#/channels/alertsCritical'
+    messages:
+      - $ref: '#/channels/alertsCritical/messages/alertCritical'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamPublishAlerts'
+  consumeAlertCritical:
+    action: receive
+    channel:
+      $ref: '#/channels/alertsCritical'
+    messages:
+      - $ref: '#/channels/alertsCritical/messages/alertCritical'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamConsumeSSE'
+  publishFleetPosition:
+    action: send
+    channel:
+      $ref: '#/channels/fleetPosition'
+    messages:
+      - $ref: '#/channels/fleetPosition/messages/fleetPosition'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamPublishFleet'
+  consumeFleetPosition:
+    action: receive
+    channel:
+      $ref: '#/channels/fleetPosition'
+    messages:
+      - $ref: '#/channels/fleetPosition/messages/fleetPosition'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamConsumeFleet'
+components:
+  messages:
+    AlertCritical:
+      payload:
+        $ref: '#/components/schemas/AlertPayload'
+      headers:
+        type: object
+        properties:
+          Nats-Msg-Id:
+            type: string
+            description: "dedup: {plate}:{alert_type}:{bucket} e.g. GTP980:zone_enter:45234 o GTP980:speeding_on:45234"
+            example: GTP980:zone_enter:45234
+      traits:
+        - $ref: '#/components/messageTraits/jetStreamHeaders'
+    FleetPosition:
+      payload:
+        $ref: '#/components/schemas/FleetPositionPayload'
+      headers:
+        type: object
+        properties:
+          Nats-Msg-Id:
+            type: string
+            description: client_event_id para dedup TELEMETRY (SPEC-001)
+      traits:
+        - $ref: '#/components/messageTraits/jetStreamHeaders'
+  schemas:
+    AlertPayload:
+      type: object
+      required: [plate, alert_type, event_id, created_at]
+      properties:
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+          example: GTP980
+        alert_type:
+          type: string
+          enum: [zone_enter, zone_exit, speeding_on, speeding_off]
+          description: "zone_enter=entra en zona crítica, zone_exit=sale, speeding_on=speed>80 tras <=80, speeding_off=speed<=80 tras >80; front traduce"
+        zone_id:
+          type: ["string", "null"]
+          format: uuid
+          description: solo para zone_enter/zone_exit
+        zone_name:
+          type: ["string", "null"]
+          example: Zona Norte
+        lat:
+          type: ["number", "null"]
+          minimum: -90
+          maximum: 90
+        lon:
+          type: ["number", "null"]
+          minimum: -180
+          maximum: 180
+        speed:
+          type: integer
+          minimum: 0
+          description: speed del punto que dispara alerta (para speeding)
+        event_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        nats_sequence:
+          type: integer
+          description: "sequence NATS para id SSE Last-Event-ID"
+    FleetPositionPayload:
+      type: object
+      required: [plate, speed, received_at]
+      properties:
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+          example: GTP980
+        lat:
+          type: ["number", "null"]
+        lon:
+          type: ["number", "null"]
+        speed:
+          type: integer
+          minimum: 0
+        received_at:
+          type: string
+          format: date-time
+          description: server time
+  operationTraits:
+    jetStreamPublishAlerts:
+      description: PublishAsync alerts.critical con MsgId plate:alert_type:bucket, dedup 2m window; 4 tipos zone_enter/zone_exit/speeding_on/off
+    jetStreamConsumeSSE:
+      description: api-sse durable DeliverPolicy All/LastSequence según Last-Event-ID, AckNone fanout, InactiveThreshold 5m, max 1k pending, :ping 15s heartbeat
+    jetStreamPublishFleet:
+      description: "Fan-out TELEMETRY telemetry.raw.{plate} a SSE fleet:position (sin plate=todos telemetry.raw.>, con plate=solo ese); id nats seq, event fleet:position"
+    jetStreamConsumeFleet:
+      description: Subscribe TELEMETRY para SSE fleet:position todos vs. filtrado ?plate; retry 5000 + :ping 15s
+  messageTraits:
+    jetStreamHeaders:
+      description: Headers mapped to NATS headers
+  servers:
+    jetStream:
+      host: nats:4222
+      protocol: nats
+      description: Stream ALERTS config
+      x-stream-config:
+        name: ALERTS
+        subjects:
+          - alerts.critical
+          - alerts.>
+        storage: file
+        retention: limits
+        discard: old
+        maxAge: "7d"
+        maxBytes: "1GB dev / 10GB prod"
+        replicas: "1 dev / 3 prod"
+        duplicateWindow: "2m"
+        consumers:
+          - name: api-sse
+            durable: api-sse
+            deliverPolicy: last_per_subject
+            ackPolicy: none
+            maxAckPending: 1000
+            inactiveThreshold: 5m

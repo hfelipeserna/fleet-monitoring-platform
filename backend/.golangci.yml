@@ -99,3 +99,22 @@ linters:
               desc: "cmd/agent solo assistant + shared (ADR-0002)"
             - pkg: "fleetmonitoring/backend/internal/fleet/**"
               desc: "cmd/agent solo assistant + shared (ADR-0002)"
+
+        # ── web: SPA nunca importa pgx/nats/genkit (BFF, ADR-0003 cond.9) ──────────
+        web:
+          files: ["**/web/**", "web/**"]
+          deny:
+            - pkg: "github.com/jackc/pgx/**"
+              desc: "web !allow pgx/nats/genkit (SPA no toca DB)"
+            - pkg: "github.com/jackc/pgx"
+              desc: "web !allow pgx/nats/genkit (SPA no toca DB)"
+            - pkg: "github.com/nats-io/**"
+              desc: "web !allow pgx/nats/genkit (SPA no toca NATS)"
+            - pkg: "github.com/nats-io/nats.go"
+              desc: "web !allow pgx/nats/genkit (SPA no toca NATS)"
+            - pkg: "google.golang.org/genai**"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"
+            - pkg: "github.com/firebase/genkit/**"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"
+            - pkg: "github.com/google/genkit/**"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"

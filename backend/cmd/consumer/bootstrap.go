@@ -86,7 +86,39 @@ func bootstrapWriter(pool *pgxpool.Pool) (*pg.Writer, *gobreaker.CircuitBreaker)
 func bootstrapBreakers(pool *pgxpool.Pool) (*pg.Writer, *gobreaker.CircuitBreaker, *breaker.Breaker) {
 	writer, dbBreaker := bootstrapWriter(pool)
 	publishBreaker := breaker.NewBreaker()
+	_ = newAlertPublishBreaker()
+	_ = newZoneResolverBreaker()
 	return writer, dbBreaker, publishBreaker
+}
+
+func newAlertPublishBreaker() *gobreaker.CircuitBreaker {
+	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-alert-publish",
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			if c.Requests < 10 {
+				return false
+			}
+			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
+		},
+	})
+}
+
+func newZoneResolverBreaker() *gobreaker.CircuitBreaker {
+	return gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "fleet-zone-resolver",
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(c gobreaker.Counts) bool {
+			if c.Requests < 10 {
+				return false
+			}
+			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
+		},
+	})
 }
 
 func bootstrapConsumer(writer application.TelemetryWriter, js nats.JetStreamContext) (*application.Consumer, application.ConsumerOptions) {

@@ -1,0 +1,101 @@
+{
+  "info": {
+    "name": "Fleet Monitoring - SPEC-002 Read",
+    "description": "Read path BFF: GET /api/fleet/positions (keyset, plate filter), GET /api/vehicles/{plate}/history, GET /healthz/metrics, SSE fleet:position (curl). Run against docker compose LB http://localhost:8080 (via nginx) or direct api http://localhost:8083. Prereq: POST telemetría via SPEC-001 first (GTP890 etc) and zones via POST /api/zones when Step3 done.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "apiBaseUrl", "value": "http://localhost:8083", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "GET /api/fleet/positions?limit=2 (AC-001 keyset)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions?limit=2",
+        "description": "AC-001: snapshot última posición por placa, keyset 2+1, next_cursor opaque base64 plate|received_at, no OFFSET"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "pm.test('has vehicles and next_cursor', () => { const j=pm.response.json(); pm.expect(j.vehicles).to.be.an('array'); pm.expect(j.vehicles.length).to.eql(2); pm.expect(j.next_cursor).to.be.a('string'); });", "pm.test('no OFFSET, has status lat lon 6dec', () => { const j=pm.response.json(); j.vehicles.forEach(v=>{ pm.expect(v.plate).to.match(/^[A-Z]{3}[0-9]{3}$/); pm.expect(v.status).to.be.oneOf(['moving','idle','alert']); if(v.lat!==null) pm.expect(v.lat.toString().split('.')[1]?.length ?? 0).to.be.at.most(6); }); });", "if(pm.response.json().next_cursor) pm.collectionVariables.set('fleet_next_cursor', pm.response.json().next_cursor);"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/fleet/positions page2 with cursor",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions?limit=2&cursor={{fleet_next_cursor}}",
+        "description": "AC-001 page2 con cursor base64 plate|received_at, debe devolver restante y no usar OFFSET"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('200 page2', () => pm.response.to.have.status(200));", "pm.test('remaining 1', () => { const j=pm.response.json(); pm.expect(j.vehicles.length).to.be.below(3); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/fleet/positions?plate=GTP980 (solo ese, BR-012)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions?plate=GTP980&limit=100",
+        "description": "AC-001 con ?plate=GTP980 solo ese, sin plate=todos"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('200 solo GTP980', () => pm.response.to.have.status(200));", "pm.test('solo GTP980', () => { const j=pm.response.json(); j.vehicles.forEach(v=> pm.expect(v.plate).to.eql('GTP980')); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/fleet/positions?plate=GTP98 400 invalid",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions?plate=GTP98&limit=100",
+        "description": "BR-007 plate regex fail -> 400"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('400 invalid plate', () => pm.response.to.have.status(400));"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/vehicles/GTP890/history?from&to&limit=5 (AC-002)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/vehicles/GTP890/history?from=2026-08-24T10:00:00Z&to=2026-08-24T11:00:00Z&limit=5",
+        "description": "AC-002 history DESC, keyset, from/to RFC3339"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('200 history', () => pm.response.to.have.status(200));", "pm.test('5 points DESC', () => { const j=pm.response.json(); pm.expect(j.points.length).to.eql(5); for(let i=1;i<j.points.length;i++) pm.expect(new Date(j.points[i].received_at) <= new Date(j.points[i-1].received_at)).to.be.true; });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/vehicles/GTP89/history 400 invalid plate",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/vehicles/GTP89/history?from=2026-08-24T10:00:00Z&to=2026-08-24T11:00:00Z&limit=5",
+        "description": "BR-007 invalid plate -> 400"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('400', () => pm.response.to.have.status(400));"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/vehicles/GTP890/history from>to 400",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/vehicles/GTP890/history?from=2026-08-24T11:00:00Z&to=2026-08-24T10:00:00Z&limit=5",
+        "description": "from>to -> 400"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('400 from>to', () => pm.response.to.have.status(400));"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "GET /api/healthz y /api/metrics (AC-009)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/healthz",
+        "description": "AC-009 healthz con breaker/nats/db"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('healthz 200', () => pm.response.to.have.status(200));", "pm.test('has breaker', () => { const j=pm.response.json(); pm.expect(j.breaker).to.be.a('string'); pm.expect(j.nats).to.be.a('string'); pm.expect(j.db).to.be.a('string'); });", "pm.sendRequest({url: pm.variables.get('baseUrl')+'/api/metrics', method:'GET'}, (err,res)=>{ pm.test('metrics 200', ()=> pm.expect(res.code).to.eql(200)); pm.test('has metrics', ()=> pm.expect(res.text()).to.include('breaker')); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "SSE /api/fleet/positions/stream (curl, AC-001 FR-011)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions/stream",
+        "description": "SSE text/event-stream fleet:position todos. En Postman no soporta EventSource: usar curl: curl -N -H 'Accept: text/event-stream' http://localhost:8080/api/fleet/positions/stream y curl -N -H 'Accept: text/event-stream' 'http://localhost:8080/api/fleet/positions/stream?plate=GTP980' solo ese. Ver todos reconecta sin plate. Expect event: fleet:position id: seq data: {plate,lat,lon,speed,received_at} + :ping 15s + retry:5000"
+      }
+    },
+    {
+      "name": "SSE /api/fleet/positions/stream?plate=GTP980 solo ese (curl)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/fleet/positions/stream?plate=GTP980",
+        "description": "SSE filtrado plate. curl -N -H 'Accept: text/event-stream' http://localhost:8080/api/fleet/positions/stream?plate=GTP980"
+      }
+    }
+  ]
+}
