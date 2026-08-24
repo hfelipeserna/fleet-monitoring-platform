@@ -1,0 +1,70 @@
+asyncapi: 3.0.0
+info:
+  title: Fleet Assistant — Events Reuse
+  version: 0.4.0
+  description: |
+    Reuse de streams existentes: TELEMETRY y ALERTS ya definidos en SPEC-001/002. El agente NO publica; solo lee estado via fleet ports (PG ST_Within) y opcionalmente consume ALERTS para getActiveAlerts. Este contrato documenta que getActiveAlerts puede consumir alerts.critical 4 tipos (zone_enter/zone_exit/speeding_on/speeding_off) y que el flow no debe inyectar MsgId libre. Forward reference a SPEC-002 alerts.critical.
+servers:
+  nats:
+    host: nats:4222
+    protocol: nats
+    description: NATS JetStream local (docker)
+channels:
+  alertsCritical:
+    address: alerts.critical
+    description: Reuso para getActiveAlerts (read-only consume, no publish desde agent)
+    messages:
+      alertCritical:
+        $ref: '#/components/messages/AlertCritical'
+operations:
+  consumeAlertCriticalForAssistant:
+    action: receive
+    channel:
+      $ref: '#/channels/alertsCritical'
+    messages:
+      - $ref: '#/channels/alertsCritical/messages/alertCritical'
+    traits:
+      - $ref: '#/components/operationTraits/jetStreamConsumeAgent'
+components:
+  messages:
+    AlertCritical:
+      payload:
+        $ref: '#/components/schemas/AlertPayload'
+      headers:
+        type: object
+        properties:
+          Nats-Msg-Id:
+            type: string
+            description: "dedup plate:alert_type:bucket (agent nunca genera MsgId libre)"
+  schemas:
+    AlertPayload:
+      type: object
+      required: [plate, alert_type, event_id, created_at]
+      properties:
+        plate:
+          type: string
+          pattern: '^[A-Z]{3}[0-9]{3}$'
+        alert_type:
+          type: string
+          enum: [zone_enter, zone_exit, speeding_on, speeding_off]
+        zone_id:
+          type: ["string", "null"]
+          format: uuid
+        zone_name:
+          type: ["string", "null"]
+        lat:
+          type: ["number", "null"]
+        lon:
+          type: ["number", "null"]
+        speed:
+          type: integer
+          minimum: 0
+        event_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+  operationTraits:
+    jetStreamConsumeAgent:
+      description: "Agent consume ALERTS durable agent-alerts AckNone, reutiliza stream ALERTS 7d 1GB (SPEC-002). No MaxDeliver/DLQ para chat; read-only."
