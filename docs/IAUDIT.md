@@ -146,6 +146,22 @@ Por qué falla: Rompe strong-typing VO, obliga re-parse en cada consumer `FleetQ
 Refactor exigido: Mantenido `*string` para Step1 por compatibilidad con tests, pero registrado deuda: `chat.go:12 var ErrValidation = shared.ErrValidation` alias único corrige sentinela (hereda lección IAUDIT 2026-08-24), y documentado refactor pendiente a `Plate *shared.Plate` en Step2/3 antes de cablear `assistant/adapters/genkit/tools.go` (transportar Plate VO normalizado end-to-end). Tests `chat_test.go:193 lower gtp980` validan vía `ParsePlate` normalizado.
 Auditor: quality-auditor | reviewer | architect
 
+## 2026-08-24 — Auditoría: assistant/domain plate VO tipado corregido + shared ValidateMessage [SPEC-003 Step1 fix]
+Severidad: media
+Hallazgo: Tras IAUDIT anterior que dejó `Plate *string` como deuda, go-backend mantuvo validación local duplicada y `chat.go:155 RuneCount` duplicaba `assistant/domain/chat.go Validate` sin `TrimSpace`; además `ChatRequest.Validate` mutaba `*r.Plate` antes de `len(errs)` y magic `20` duplicado en `NewChatRequest`/`ApplyDefaults`.
+Evidencia: backend/internal/assistant/domain/chat.go:18-35, backend/internal/fleet/adapters/http/chat.go:149-158, backend/internal/shared/domain/geo.go:21, quality-auditor re-audit ses_fca225ec
+Por qué falla: Viola DRY/BR-009 single source `ValidateMessage 1..4000` y CQS (mutación en error), y strong-typing VO.
+Refactor exigido: Creado `shared/domain/chat_validation.go` con `ValidateMessage(msg string) error` (TrimSpace + RuneCount + ErrValidation) y `shared/domain/requestid.go` con `RequestIDKey`, `assistant/domain/chat.go` ahora `Plate *shared.Plate`, `Validate()` delega a `shared.ValidateMessage`, mutación diferida `normalizedPlate` solo en éxito, const `DefaultMinMinutes/DefaultLimit` y `fleet/domain/geo.go` delega `validateUUID` a `shared.IsValidUUID`. Tests `chat_test.go` actualizados a `platePtr` tipado y `documents spaces` espera error tras trim.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: fleet/http/chat.go BFF alta CC18, XFF spoof, breaker strings [SPEC-003 Step2]
+Severidad: alta
+Hallazgo: IA generó `fleet/adapters/http/chat.go:106-219` con `ServeHTTP` 114L CC 18/27 (17 if), `sync.Map` limiters sin evicción ni `isTrustedProxy` (X-Forwarded-For spoofable → bypass 10/min y OOM unbounded), breaker `ReadyToTrip` sin `Requests<5` guard, classification `strings.Contains("circuit breaker is open")` + `ToLower` allocs + `&&`/`||` precedencia rota, Content-Type `Contains("application/json")` laxo, log `invalid json: %v` expone err, `clientIP` via `LastIndex(":")` falla IPv6 `[::1]:8080`, validación `1..4000` duplicada local vs `assistant/domain`.
+Evidencia: backend/internal/fleet/adapters/http/chat.go:23-264 (pre refactor, ver git), reviewer ses_fca185e0, security ses_fca16f12, quality-auditor ses_fca163a6
+Por qué falla: OWASP API4 Unrestricted Resource Consumption (XFF spoof → cuota Gemini ilimitada + Map OOM 16GB), CC>10 impide testeo `2^17` paths, strings.Contains frágil rompe 429/503 mapping, DRY 2 fuentes drift, log injection.
+Refactor exigido: Extraídos `shared/domain/chat_validation.go` `ValidateMessage` y `requestid.go` `RequestIDKey`, `chat.go` refactorizado a `ServeHTTP` 27L CC<6 con helpers `ensureRequestID/checkMethod/checkContentType/decodeAndValidate/checkRateLimit/doChat/classifyChatError` solo `errors.Is`, `mime.ParseMediaType` + `DisallowUnknownFields`, `isTrustedProxy/getIP` + `limiterEntry{s,lastSeen}` sweep 10m, `shared.WithRequestID`, `writeChatJSON` headers `nosniff/no-store`, `net.SplitHostPort` IPv6, `NewChatHandlerWithOptions`. `go test -run TestChatBFF` PASS 0.58s, `go vet 0`, CC <10, depguard `fleet !→ assistant` OK. Commit Step2.
+Auditor: reviewer | security | quality-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

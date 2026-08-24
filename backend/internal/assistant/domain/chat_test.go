@@ -132,8 +132,8 @@ func TestChatRequest_Validate(t *testing.T) {
 
 	t.Run("documents spaces count as chars", func(t *testing.T) {
 		// Covers [SPEC-003: AC-009, BR-009]
-		// Spec: message 1..4000 chars UTF-8, spaces count. Future BFF may trim, but domain validates raw length.
-		// Currently a single space should be considered 1 char and pass; empty fails. This test documents behavior.
+		// Spec: message 1..4000 runes trimmed; spaces only considered empty after TrimSpace.
+		// Shared ValidateMessage trims, so single space is invalid.
 		// Arrange
 		req := validChatRequest()
 		req.Message = " "
@@ -142,8 +142,11 @@ func TestChatRequest_Validate(t *testing.T) {
 		err := req.Validate()
 
 		// Assert
-		if err != nil {
-			t.Fatalf("expected single space to count as 1 char and be valid per current spec, got %v", err)
+		if err == nil {
+			t.Fatal("expected single space to be invalid after trim")
+		}
+		if !errors.Is(err, shared.ErrValidation) {
+			t.Fatalf("expected ErrValidation for single space, got %v", err)
 		}
 	})
 

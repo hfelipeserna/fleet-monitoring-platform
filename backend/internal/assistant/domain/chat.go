@@ -3,7 +3,6 @@ package domain
 import (
 	"errors"
 	"fmt"
-	"unicode/utf8"
 
 	shared "fleetmonitoring/backend/internal/shared/domain"
 )
@@ -51,9 +50,8 @@ func (r *ChatRequest) Validate() error {
 	var errs []error
 	var normalizedPlate *shared.Plate
 
-	n := utf8.RuneCountInString(r.Message)
-	if n < MessageMinRunes || n > MessageMaxRunes {
-		errs = append(errs, fmt.Errorf("message length %d invalid: must be %d..%d runes", n, MessageMinRunes, MessageMaxRunes))
+	if err := shared.ValidateMessage(r.Message); err != nil {
+		errs = append(errs, err)
 	}
 
 	if r.Plate != nil {
