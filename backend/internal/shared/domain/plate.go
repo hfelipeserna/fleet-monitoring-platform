@@ -11,6 +11,7 @@ var (
 	plateRegex      = regexp.MustCompile(`^[A-Z]{3}[0-9]{3}$`)
 	ErrInvalidPlate = errors.New("invalid plate format")
 	ErrValidation   = errors.New("validation")
+	ErrUnavailable  = errors.New("unavailable")
 )
 
 type Plate string

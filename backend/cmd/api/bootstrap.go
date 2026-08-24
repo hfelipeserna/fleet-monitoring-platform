@@ -13,7 +13,9 @@ import (
 
 	fleetapp "fleetmonitoring/backend/internal/fleet/application"
 	fleethttp "fleetmonitoring/backend/internal/fleet/adapters/http"
+	fleetnatsadapter "fleetmonitoring/backend/internal/fleet/adapters/nats"
 	fleetpg "fleetmonitoring/backend/internal/fleet/adapters/pg"
+	fleetsse "fleetmonitoring/backend/internal/fleet/adapters/sse"
 	fleetdomain "fleetmonitoring/backend/internal/fleet/domain"
 	fleetenv "fleetmonitoring/backend/internal/fleet/infra/env"
 	fleetnats "fleetmonitoring/backend/internal/fleet/infra/nats"
@@ -259,20 +261,6 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
 		},
 	})
-	zoneResolverBreaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name:        "fleet-zone-resolver",
-		MaxRequests: 10,
-		Interval:    30 * time.Second,
-		Timeout:     30 * time.Second,
-		ReadyToTrip: func(c gobreaker.Counts) bool {
-			if c.Requests < 10 {
-				return false
-			}
-			return float64(c.TotalFailures)/float64(c.Requests) >= 0.5
-		},
-	})
-	_ = alertPublishBreaker
-	_ = zoneResolverBreaker
 	zoneRepo := fleetpg.NewZoneRepository(adapter)
 	zoneSvc := fleetapp.NewZoneService(zoneRepo)
 	zoneWrapped := &zoneBreaker{svc: zoneSvc, breaker: zoneBreakerCB, timeout: 2 * time.Second}
@@ -280,7 +268,14 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 	q := &querier{svc: svc, breaker: readBreaker, timeout: 2 * time.Second}
 	ops := &opsProvider{breaker: readBreaker, nc: nc, pool: pool}
 	handler := fleethttp.NewHandler(q, ops)
+	alertSub := fleetnatsadapter.NewAlertSubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
+	telemetrySub := fleetnatsadapter.NewTelemetrySubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
+	sseHandler := fleetsse.NewHandler(alertSub, telemetrySub)
 	combined := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/alerts" || r.URL.Path == "/api/fleet/positions/stream" {
+			sseHandler.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/api/zones" || strings.HasPrefix(r.URL.Path, "/api/zones/") {
 			zoneHandler.ServeHTTP(w, r)
 			return

@@ -19,11 +19,12 @@ type Server struct {
 func NewServer(handler http.Handler, addr string, nc *nats.Conn, pool *pgxpool.Pool) *Server {
 	return &Server{
 		httpServer: &http.Server{
-			Addr:         addr,
-			Handler:      handler,
+			Addr:    addr,
+			Handler: handler,
+			// WriteTimeout 0 for SSE (long-lived) — BR-006 ping 15s vs LB 60s.
 			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  30 * time.Second,
+			WriteTimeout: 0,
+			IdleTimeout:  120 * time.Second,
 		},
 		nc:   nc,
 		pool: pool,
