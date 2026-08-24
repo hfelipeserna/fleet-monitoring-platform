@@ -94,12 +94,16 @@ docker compose --profile observability config  # valida prometheus/grafana/loki/
 
 ## API — Ejemplos
 
-Base URL local: `http://localhost:8080` (vía LB). Directo ingest: `http://localhost:8081`.
+Base URL local: `http://localhost:8080` (vía LB). Directo ingest: `http://localhost:8081`, directo api BFF: `http://localhost:8083`.
 
 ```bash
-# health + breaker
-curl -s http://localhost:8080/healthz | jq
-curl -s http://localhost:8080/metrics | head -n 20
+# health + breaker — ingest (vía LB) y api BFF (vía LB y directo)
+curl -s http://localhost:8080/healthz | jq              # LB → ingest
+curl -s http://localhost:8080/api/healthz | jq           # LB → api (proxy_buffering off)
+curl -s http://localhost:8083/healthz | jq               # directo api
+curl -s http://localhost:8080/metrics | head -n 20       # ingest metrics
+curl -s http://localhost:8083/metrics | head -n 20       # api metrics: breaker_state, api_sse_connections, p95_latency_ms, db_pool
+curl -s http://localhost:8080/api/metrics | head -n 20   # vía LB → api
 
 # single — 202 Accepted (retención durable JetStream, no implica persistencia DB aún)
 curl -s -X POST http://localhost:8080/v1/telemetry \
