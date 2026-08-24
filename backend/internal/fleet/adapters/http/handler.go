@@ -47,7 +47,9 @@ func NewHandler(q Querier, ops ...OpsProvider) http.Handler {
 	h.mux.HandleFunc("/api/fleet/positions", h.handlePositions)
 	h.mux.HandleFunc("/api/vehicles/", h.handleHistory)
 	h.mux.HandleFunc("/healthz", h.handleHealthz)
+	h.mux.HandleFunc("/api/healthz", h.handleHealthz)
 	h.mux.HandleFunc("/metrics", h.handleMetrics)
+	h.mux.HandleFunc("/api/metrics", h.handleMetrics)
 	return h
 }
 

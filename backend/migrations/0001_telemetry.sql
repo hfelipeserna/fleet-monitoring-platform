@@ -1,4 +1,10 @@
-CREATE EXTENSION IF NOT EXISTS postgis;
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS postgis;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'postgis not available at init, telemetry geom will be without postgis';
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS telemetry (
   client_event_id UUID NOT NULL,
@@ -8,12 +14,31 @@ CREATE TABLE IF NOT EXISTS telemetry (
   lat DOUBLE PRECISION CHECK (lat BETWEEN -90 AND 90),
   lon DOUBLE PRECISION CHECK (lon BETWEEN -180 AND 180),
   speed INT NOT NULL CHECK (speed >= 0),
-  geom GEOGRAPHY(Point,4326) GENERATED ALWAYS AS (
-    CASE WHEN lat IS NULL OR lon IS NULL THEN NULL
-    ELSE ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography END
-  ) STORED,
   PRIMARY KEY (client_event_id, received_at)
 );
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='telemetry' AND column_name='geom') THEN
+      ALTER TABLE telemetry ADD COLUMN geom GEOGRAPHY(Point,4326) GENERATED ALWAYS AS (
+        CASE WHEN lat IS NULL OR lon IS NULL THEN NULL
+        ELSE ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography END
+      ) STORED;
+    END IF;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'geom column not added';
+END
+$$;
+
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS timescaledb;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'timescaledb not available';
+END
+$$;
 
 SELECT create_hypertable('telemetry','received_at', chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE, migrate_data => TRUE);
 
@@ -38,6 +63,6 @@ CREATE TABLE IF NOT EXISTS telemetry_dedup (
 -- Example: DELETE FROM telemetry_dedup WHERE first_seen < now() - INTERVAL '30 days';
 -- Do not convert telemetry_dedup to hypertable; it is small and indexed by PK.
 
--- GIST optional for SPEC-002: CREATE INDEX IF NOT EXISTS telemetry_geom_idx ON telemetry USING GIST (geom);
+-- GIST optional for SPEC-002: will be created in 0002 if postgis available
 -- Migrator should use pg_advisory_lock to serialize DDL; IF NOT EXISTS ensures idempotence.
 -- CopyFrom must send only lat/lon (geom is GENERATED).

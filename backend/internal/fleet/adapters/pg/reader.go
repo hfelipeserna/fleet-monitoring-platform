@@ -78,7 +78,7 @@ func (r *Reader) LastPositions(ctx context.Context, plate *shared.Plate, limit i
 			return nil, "", err
 		}
 	}
-	sql := "SELECT DISTINCT ON (plate) plate, lat, lon, speed, received_at, status FROM telemetry"
+	sql := "SELECT DISTINCT ON (plate) plate, lat, lon, speed, received_at FROM telemetry"
 	args := []any{}
 	where := []string{}
 	if plate != nil {
@@ -112,8 +112,7 @@ func (r *Reader) LastPositions(ctx context.Context, plate *shared.Plate, limit i
 		var lat, lon *float64
 		var speed int
 		var receivedAt time.Time
-		var status string
-		if err := rows.Scan(&plateStr, &lat, &lon, &speed, &receivedAt, &status); err != nil {
+		if err := rows.Scan(&plateStr, &lat, &lon, &speed, &receivedAt); err != nil {
 			return nil, "", fmt.Errorf("scan LastPositions failed: %w", err)
 		}
 		if lat != nil {
@@ -126,6 +125,10 @@ func (r *Reader) LastPositions(ctx context.Context, plate *shared.Plate, limit i
 		}
 		if _, err := shared.ParsePlate(plateStr); err != nil {
 			continue
+		}
+		status := "idle"
+		if speed > 0 {
+			status = "moving"
 		}
 		out = append(out, fleet.VehiclePos{Plate: plateStr, Lat: lat, Lon: lon, Speed: speed, ReceivedAt: receivedAt, Status: status})
 	}
@@ -155,7 +158,7 @@ func (r *Reader) History(ctx context.Context, plate shared.Plate, from, to *time
 	if from != nil && to != nil && from.After(*to) {
 		return nil, "", fmt.Errorf("from after to: %w", shared.ErrValidation)
 	}
-	sql := "SELECT plate, lat, lon, speed, received_at, status FROM telemetry WHERE plate=$1"
+	sql := "SELECT plate, lat, lon, speed, received_at FROM telemetry WHERE plate=$1"
 	args := []any{string(plate)}
 	idx := 2
 	if from != nil {
@@ -191,8 +194,7 @@ func (r *Reader) History(ctx context.Context, plate shared.Plate, from, to *time
 		var lat, lon *float64
 		var speed int
 		var receivedAt time.Time
-		var status string
-		if err := rows.Scan(&plateStr, &lat, &lon, &speed, &receivedAt, &status); err != nil {
+		if err := rows.Scan(&plateStr, &lat, &lon, &speed, &receivedAt); err != nil {
 			return nil, "", fmt.Errorf("scan History failed: %w", err)
 		}
 		if lat != nil {
@@ -202,6 +204,10 @@ func (r *Reader) History(ctx context.Context, plate shared.Plate, from, to *time
 		if lon != nil {
 			v := shared.Round6(*lon)
 			lon = &v
+		}
+		status := "idle"
+		if speed > 0 {
+			status = "moving"
 		}
 		out = append(out, fleet.VehiclePos{Plate: plateStr, Lat: lat, Lon: lon, Speed: speed, ReceivedAt: receivedAt, Status: status})
 	}

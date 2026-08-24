@@ -22,7 +22,7 @@ const (
 func EnsureStream(ctx context.Context, js nats.JetStreamContext) error {
 	cfg := &nats.StreamConfig{
 		Name:       alertsStream,
-		Subjects:   []string{alertsSubject, alertsWild},
+		Subjects:   []string{alertsWild},
 		Storage:    nats.FileStorage,
 		Retention:  nats.LimitsPolicy,
 		Discard:    nats.DiscardOld,
