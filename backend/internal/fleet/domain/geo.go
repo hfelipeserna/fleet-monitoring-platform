@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,8 +33,6 @@ var (
 	ErrDuplicateZoneName = errors.New("duplicate zone name")
 )
 
-var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
 func round6(v float64) float64 {
 	return math.Round(v*1e6) / 1e6
 }
@@ -49,7 +46,7 @@ func roundCoords(coords [][]float64) {
 }
 
 func validateUUID(s string) error {
-	if !uuidRegex.MatchString(s) {
+	if !shared.IsValidUUID(s) {
 		return fmt.Errorf("invalid uuid %q: %w", s, errors.Join(ErrInvalidUUID, ErrValidation))
 	}
 	return nil

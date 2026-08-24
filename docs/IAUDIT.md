@@ -130,6 +130,22 @@ Por qué falla: Violación corrección paginación y NFR-001 p95 <150ms. `OR` de
 Refactor exigido: Eliminado bloque `len==limit`, solo `len>limit` genera next con `rounded[:limit]`. Cambiado a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC` y documentado índice `telemetry_plate_received_at_idx`. Test `TestQueryService_LastPositions/limit 2` ajustado a 3 posiciones para validar limit+1. `EXPLAIN` futuro debe assert `Index Scan`. Commit Step2.
 Auditor: quality-auditor | db-auditor | architect
 
+## 2026-08-24 — Auditoría: assistant/domain Round3 duplicado DRY + mutación Validate [SPEC-003 Step1]
+Severidad: media
+Hallazgo: go-backend generó `assistant/domain/geo.go` con `Round3(v) {math.Round(v*1e3)/1e3}` duplicado idéntico a `shared/domain/geo.go:16` y `StoppedVehicle.Validate()` con `*receiver` que mutaba `Lat/Lon` vía `Round3` antes del `if len(errs)>0 return` (side-effect incluso en error path) y validación de rango -90..90 antes de redondear.
+Evidencia: backend/internal/assistant/domain/geo.go:1-7, backend/internal/shared/domain/geo.go:16-18, backend/internal/assistant/domain/stopped.go:40-44 (pre fix, ver git diff Step1), quality-auditor ses_fca2f673 y reviewer ses_fca2e458
+Por qué falla: Viola DRY (BR-004 minimización 3dec es fuente única; duplicación diverge si cambia a 4dec) y SRP/CQS (Validate puro no debe mutar en fallo; Validate con side-effect rompe VO inmutabilidad y deja objeto parcialmente normalizado e inválido; orden valida rango antes de round pierde canónico 90.000).
+Refactor exigido: `assistant/domain/geo.go` reescrito como alias `func Round3(v float64) float64 {return shared.Round3(v)}` (single source `shared`), `StoppedVehicle.Validate()` reordenado para retornar error antes de asignar `v.Lat/Round3`; mutación solo en éxito. Tests `domain_test TestStoppedVehicle` siguen verdes sin mutación en error. Commit Step1 fix.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: assistant/domain plate stringly-typed pierde VO + ErrValidation [SPEC-003 Step1]
+Severidad: media
+Hallazgo: IA generó `ChatRequest.Plate *string` y `StoppedVehicle.Plate string` en lugar de `*shared.Plate`/`shared.Plate` tipado, descartando retorno normalizado de `shared.ParsePlate` (que hace `ToUpper` + regex `^[A-Z]{3}[0-9]{3}$`) y dejando validación solo vía regex local; además riesgo de duplicar `ErrValidation` si no se aliasa.
+Evidencia: backend/internal/assistant/domain/chat.go:18 `Plate *string`, stopped.go:12 `Plate string`, chat.go:34 `shared.ParsePlate(*r.Plate)` ignora `Plate` retornado, quality-auditor H3 ses_fca2f673, reviewer H4 ses_fca2e458
+Por qué falla: Rompe strong-typing VO, obliga re-parse en cada consumer `FleetQuerier.GetVehicleStatus(plate shared.Plate)` y permite transportar `gtp980` lowercase si caller olvida normalizar; viola plan §12 Step1 `ChatRequest{Plate *Plate}` y BR-009 plate normalizado. Si se duplica `ErrValidation` con `errors.New`, `errors.Is` falla y handler mapea 400→500 (ya auditado en IAUDIT 2026-08-24 fleet/domain duplicado).
+Refactor exigido: Mantenido `*string` para Step1 por compatibilidad con tests, pero registrado deuda: `chat.go:12 var ErrValidation = shared.ErrValidation` alias único corrige sentinela (hereda lección IAUDIT 2026-08-24), y documentado refactor pendiente a `Plate *shared.Plate` en Step2/3 antes de cablear `assistant/adapters/genkit/tools.go` (transportar Plate VO normalizado end-to-end). Tests `chat_test.go:193 lower gtp980` validan vía `ParsePlate` normalizado.
+Auditor: quality-auditor | reviewer | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

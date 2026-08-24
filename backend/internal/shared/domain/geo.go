@@ -5,12 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 )
 
 func Round6(v float64) float64 {
 	return math.Round(v*1e6) / 1e6
+}
+
+func Round3(v float64) float64 {
+	return math.Round(v*1e3) / 1e3
+}
+
+var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func IsValidUUID(s string) bool {
+	return uuidRegex.MatchString(s)
 }
 
 func EncodeCursor(plate string, t time.Time) string {
