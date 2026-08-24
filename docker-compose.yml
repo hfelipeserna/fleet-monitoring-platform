@@ -101,6 +101,30 @@ services:
       retries: 10
       start_period: 10s
 
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ | grep -qi \"<!doctype\" || wget -qO- http://localhost:80/healthz | grep -q ok || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   ingest:
     build:
       context: ./backend
@@ -114,7 +138,7 @@ services:
       JETSTREAM_MAX_BYTES: ${JETSTREAM_MAX_BYTES:-5368709120}
       PUBLISH_TIMEOUT: ${PUBLISH_TIMEOUT:-3s}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     depends_on:
       nats:
         condition: service_healthy
@@ -162,14 +186,17 @@ services:
 
   lb:
     image: nginx:alpine
+    user: nginx
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       ingest:
         condition: service_healthy
       api:
+        condition: service_healthy
+      web:
         condition: service_healthy
     networks: [fleet]
     restart: unless-stopped
@@ -189,7 +216,7 @@ services:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
@@ -212,7 +239,7 @@ services:
       - ./infra/observability/grafana/datasources/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
       - ./infra/observability/grafana/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
     networks: [fleet]
@@ -232,7 +259,7 @@ services:
     volumes:
       - ./infra/loki/loki.yml:/etc/loki/loki.yml:ro
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
@@ -249,9 +276,9 @@ services:
     volumes:
       - ./infra/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
     ports:
-      - "3200:3200"
-      - "4317:4317"
-      - "4318:4318"
+      - "127.0.0.1:3200:3200"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
     networks: [fleet]
     restart: unless-stopped
     logging: *default-logging
@@ -267,7 +294,7 @@ services:
     image: structurizr/structurizr:latest
     command: local
     ports:
-      - "8088:8080"
+      - "127.0.0.1:8088:8080"
     volumes:
       - ./docs/c4:/usr/local/structurizr
     networks: [fleet]
