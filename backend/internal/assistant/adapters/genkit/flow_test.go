@@ -65,7 +65,7 @@ var _ application.FleetQuerier = (*fakeFleetQuerier)(nil)
 // Covers [SPEC-003: FR-002, FR-003, BR-002]
 func TestFlow_Registers_4_Tools(t *testing.T) {
 	// Covers [SPEC-003: AC-003, FR-002, FR-003, BR-002]
-	t.Run("registers exactly 4 read-only tools with correct names and schemas", func(t *testing.T) {
+	t.Run("registers exactly 5 read-only tools with correct names and schemas", func(t *testing.T) {
 		// Arrange
 		q := &fakeFleetQuerier{}
 		flow := genkit.NewAssistantFlow(q, nil)
@@ -75,10 +75,10 @@ func TestFlow_Registers_4_Tools(t *testing.T) {
 		names := flow.ToolNames()
 
 		// Assert
-		if len(tools) != 4 {
-			t.Fatalf("expected 4 tools defined, got %d", len(tools))
+		if len(tools) != 5 {
+			t.Fatalf("expected 5 tools defined, got %d", len(tools))
 		}
-		expected := []string{"findVehiclesStoppedInCriticalZones", "getFleetSummary", "getVehicleStatus", "getActiveAlerts"}
+		expected := []string{"findVehiclesStoppedInCriticalZones", "getFleetSummary", "getVehicleStatus", "getActiveAlerts", "listPlates"}
 		for _, exp := range expected {
 			found := false
 			for _, n := range names {

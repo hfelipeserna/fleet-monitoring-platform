@@ -920,8 +920,8 @@ func TestFlow_Coverage_BreakerStateAndOptions(t *testing.T) {
 		if opts.MaxOutputTokens != 1024 || opts.Temperature != 0.2 {
 			t.Fatalf("expected opts 1024/0.2, got %+v", opts)
 		}
-		if len(names) != 4 {
-			t.Fatalf("expected 4 tools, got %v", names)
+		if len(names) != 5 {
+			t.Fatalf("expected 5 tools, got %v", names)
 		}
 	})
 }
