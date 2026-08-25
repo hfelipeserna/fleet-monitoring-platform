@@ -9,8 +9,8 @@ import type { ZonesFC } from "../features/zones/types";
 
 export type Vehicle = {
   plate: string;
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
   speed: number;
 };
 
@@ -45,6 +45,7 @@ function Recenter({ vehicle }: { vehicle?: Vehicle | null }) {
 }
 
 export default function Map({ vehicles = [], zones, selectedVehicle, children }: MapProps) {
+  const markers = vehicles.filter((v) => v.lat != null && v.lon != null);
   return (
     <MapContainer
       center={[4.71, -74.07]}
@@ -55,15 +56,15 @@ export default function Map({ vehicles = [], zones, selectedVehicle, children }:
       <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' />
       <Recenter vehicle={selectedVehicle} />
       {children}
-      {vehicles.length > 500 ? (
+      {markers.length > 500 ? (
         <MarkerClusterGroup chunkedLoading>
-          {vehicles.map((v) => (
-            <Marker key={v.plate} position={[v.lat, v.lon]} title={v.plate} alt={`vehicle ${v.plate}`} />
+          {markers.map((v) => (
+            <Marker key={v.plate} position={[v.lat as number, v.lon as number]} title={v.plate} alt={`vehicle ${v.plate}`} />
           ))}
         </MarkerClusterGroup>
       ) : (
-        vehicles.map((v) => (
-          <Marker key={v.plate} position={[v.lat, v.lon]} title={v.plate} alt={`vehicle ${v.plate}`} />
+        markers.map((v) => (
+          <Marker key={v.plate} position={[v.lat as number, v.lon as number]} title={v.plate} alt={`vehicle ${v.plate}`} />
         ))
       )}
       {zones ? (

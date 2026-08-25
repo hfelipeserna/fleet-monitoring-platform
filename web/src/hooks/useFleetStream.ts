@@ -5,11 +5,28 @@ import { useSSE } from "./useSSE";
 
 export function parseFleetPosition(raw: string): FleetPosition | null {
   try {
-    const data = JSON.parse(raw) as FleetPosition;
-    if (data && typeof data.plate === "string" && typeof data.lat === "number" && typeof data.lon === "number") {
-      return data;
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    if (!data || typeof data.plate !== "string" || typeof data.received_at !== "string") return null;
+    const latRaw = data.lat as unknown;
+    const lonRaw = data.lon as unknown;
+    const lat = latRaw === null || latRaw === undefined ? null : typeof latRaw === "number" ? latRaw : null;
+    const lon = lonRaw === null || lonRaw === undefined ? null : typeof lonRaw === "number" ? lonRaw : null;
+    if (lat !== null && typeof lat !== "number") return null;
+    if (lon !== null && typeof lon !== "number") return null;
+    if (lat === null && lon === null) {
+      // allow nullable coords per BR-006, keep raw nulls
+    } else if (lat === null || lon === null) {
+      // one null is still valid per BR-006 but keep as null; do not discard
     }
-    return null;
+    // validate speed is number if present, default? require it
+    if (typeof data.speed !== "number") return null;
+    return {
+      plate: data.plate as string,
+      lat,
+      lon,
+      speed: data.speed as number,
+      received_at: data.received_at as string,
+    };
   } catch {
     return null;
   }

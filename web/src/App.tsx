@@ -81,8 +81,13 @@ function MonitoringLeft({
     <div>
       <VehicleSearch />
       {selectedPlate ? (
-        <button type="button" onClick={onClear} aria-label="Clear vehicle info" className="mt-2 disabled:opacity-50">
-          Clear
+        <button
+          type="button"
+          onClick={onClear}
+          aria-label="Clear vehicle info"
+          className="mt-2 bg-emerald-300 px-3 py-1 disabled:opacity-50"
+        >
+          Clear vehicle info
         </button>
       ) : null}
       <div className="mt-2">

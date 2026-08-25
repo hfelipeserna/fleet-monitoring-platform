@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useMap } from "react-leaflet";
 import { usePortalStore } from "../../store/portalStore";
 import { validatePolygon, type DraftPolygon } from "./types";
+import "@geoman-io/leaflet-geoman-free";
+import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 
 type Props = {
   onDraftChange?: (v: DraftPolygon | null) => void;

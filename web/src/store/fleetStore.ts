@@ -2,8 +2,8 @@ import { create } from "zustand";
 
 export type FleetPosition = {
   plate: string;
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
   speed: number;
   received_at: string;
 };
