@@ -168,42 +168,77 @@ Trazabilidad `TS->TEST` 1:1, Vitest jsdom `h-[280px]` class assert `overflow-y-a
 **Changes**: `lib/plate.ts`, `features/monitoring/VehicleSearch.tsx`, `VehicleCard.tsx`, `VehicleStatusBadge.tsx`
 **Tests TDD**: `plate.test.ts` TTF67 vs TTF678 + `VehicleCard.test.tsx` moving green #16a34a vs idle red #dc2626, ⚠️ 81, Last update, not-found
 **Validation**: `npm test -- --run lib/plate` RED->GREEN, `npm run lint`
+**Audit gates (obligatorio)**: `frontend-auditor` (a11y label+aria, contraste Moving/Idle AA, hint regex, not-found UX, Last update) + `reviewer` (depguard BFF cond.9)
 
 ### Step 2 — Fleet stream filtrado + Clear
 **Goal**: Search subscribe ?plate vs flota, Clear reconecta
 **Changes**: `hooks/useFleetStream.ts`, `store/fleetStore.ts` + `portalStore.ts` `selectedPlate`, `App.tsx` wiring `Map filteredVehicles`
 **Tests TDD**: `useFleetStream.test.tsx` sin plate todos / ?plate solo TTF678 / Clear vuelve a todos
 **Validation**: `curl /api/fleet/positions?plate=TTF678`, `curl -N /api/fleet/positions/stream?plate=TTF678`
+**Audit gates (obligatorio)**: `frontend-auditor` (SSE cleanup en unmount, no re-render full fleet, Clear resetea UX, keyboard Enter) + `quality-auditor` (O(n) map update)
 
 ### Step 3 — Bottom tabs fijos Alerts + Chat
 **Goal**: Altura fija `h-[280px] lg:h-[340px] overflow-y-auto`
 **Changes**: `features/monitoring/AlertsPanel.tsx`, `ChatTab.tsx`, `store/portalStore activeBottom`, `App.tsx` bottom tabs
 **Tests TDD**: `AlertsPanel.test.tsx` 2 speeding msgs fixed height, `ChatTab.test.tsx` embed + 429
 **Validation**: `npm test -- --run AlertsPanel`
+**Audit gates (obligatorio)**: `frontend-auditor` (panel fijo no crece `overflow-y-auto` 280/340, `aria-live` Alerts, Chat input+botón azul focus, scroll aislado) + `reviewer` (SSE no filtra PII)
 
 ### Step 4 — Top tabs Monitoring|Critical zones + layout proporcional
 **Goal**: `activeTop` Zustand sin reload
 **Changes**: `store/portalStore.ts`, `App.tsx` `grid lg:cols-2` vs `grid [35%_65%]`, header
 **Tests TDD**: `App.test.tsx` click Monitoring<->Critical zones sin reload
 **Validation**: `npm run build` + open `http://localhost:5173` toggle
+**Audit gates (obligatorio)**: `frontend-auditor` (fidelidad Figma 50/50 vs 35/65, top negro activo vs blanco, responsive sin overflow, no reload) + `reviewer` (state no prop drilling)
 
 ### Step 5 — Zones list + map + draw Geoman
 **Goal**: List + GeoJSON 0.2 + draft habilita Create zone
 **Changes**: `features/zones/ZonesList.tsx`, `ZonesMap.tsx`, `ZoneDrawControl.tsx`, `portalStore draftPolygon`, deps `@geoman-io/leaflet-geoman-free`
 **Tests TDD**: `ZonesList.test.tsx` 0 vs 4 alternando, `ZoneDrawControl.test.tsx` draft enable
 **Validation**: `GET /api/zones` manual + draw en mapa
+**Audit gates (obligatorio)**: `frontend-auditor` (draw draft capa aislada, `Create zone disabled` sin draft con tooltip, lista alterna verde/celeste `key={id}`, GeoJSON rojo 0.2) + `quality-auditor` si CC>10
 
 ### Step 6 — Modales Create/Edit/Delete zones
 **Goal**: POST/PUT/DELETE con 400/409 inline, Cancel descarta draft
 **Changes**: `CreateZoneModal.tsx`, `EditZoneModal.tsx`, `portalStore` modal state
 **Tests TDD**: `CreateZoneModal.test.tsx` 201 vs 400/409, `EditZoneModal.test.tsx` Rename 200 Delete 204 Cancel
 **Validation**: `curl -X POST /api/zones` via UI modal
+**Audit gates (obligatorio)**: `frontend-auditor` (modal `role=dialog aria-modal` centrado overlay `bg-black/50`, focus trap, `Esc` cierra, error inline `409` bajo input, `Rename/Delete/Cancel` keyboard, Cancel descarta draft sin leak) + `security` (rate 10/min)
 
 ### Step 7 — Polish a11y, depguard, coverage
 **Goal**: Cierre DoD Agentes
 **Changes**: `role=dialog`, `aria-label`, `focus trap`, `depguard.test.ts`
 **Tests TDD**: `depguard.test.ts` 0 pgx/nats/genkit, a11y axe
 **Validation**: `npm test -- --coverage --run` >60%, `docker compose config -q`, `npm run build`, `golangci-lint` still green, reviewer sin hallazgos altos
+**Audit gates (obligatorio)**: `frontend-auditor` **final** (checklist completo §11 skill: React, performance cluster, WCAG AA, design system tokens, UX Nielsen, fidelidad 8 maquetas) + `reviewer` + `security` — bloquea cierre si severidad alta
+
+## 12.1 Gates condicionales por mundo — orquestación `architect` (exoesqueleto)
+
+> Regla vinculante para este feature: el `architect` decide **qué auditor disparar** según `git diff --name-only` del Step. No hay auditor único.
+
+| Mundo tocado (`git diff`) | Auditor(es) obligatorio(s) | Qué valida | Cuándo se dispara en SPEC-004 |
+|---|---|---|---|
+| `web/src/**` **`web/**` solo frontend | `frontend-auditor` **obligatorio por Step** + `reviewer` (solo `depguard` BFF cond.9) | React hooks/cleanup, `h-[280px] lg:h-[340px] overflow-y-auto`, WCAG AA (`aria-label Plate`, `role=dialog` + focus trap), Figma `50/50` vs `35/65`, contraste `Moving #16a34a / Idle #dc2626`, `⚠️ >80`, cluster >500 | **SPEC-004 Steps 1..7** (feature 100% SPA, reusa BFF) — ver `§12 Audit gates` de cada Step |
+| `backend/internal/**` `migrations/**` `infra/**` `cmd/**` solo backend/infra | `reviewer` + `quality-auditor` + `security` + `scalability` (+ `db-auditor` si toca `*.sql`/`pgx`) | Clean arch `domain->application->adapters->infra`, `fmt.Errorf:%w`, `gobreaker` + timeout, `GIST/ST_IsValid/ST_Area>0`, `EXPLAIN` sin SeqScan, dedup `Nats-Msg-Id` | No aplica a SPEC-004 salvo que un Step requiera fix BFF (ej. `PUT /zones` validación) |
+| **Fullstack** `web/**` **y** `backend/**` | **Ambos mundos en paralelo** — `frontend-auditor` **y** `reviewer/quality/db` — cada uno bloquea `done` si severidad alta | Frontend + backend como arriba, sin duplicar alcance | `Step 5..6 Create/Edit Zone` si se toca `POST/PUT/DELETE /api/zones` handler + `CreateZoneModal` (modal 409 inline + `CHECK ST_NPoints 4..101`) |
+
+**Cómo se invoca:**
+
+```ts
+// Solo front (este feature)
+task({ subagent_type: "frontend-auditor", prompt: "Audita web/src/features/monitoring + zones AC-001..012, maquetas 8, skill frontend-ux-audit" })
+task({ subagent_type: "reviewer", prompt: "Valida depguard web !-> pgx/nats/genkit y tiles OSM directo" })
+
+// Solo back (si surge fix BFF)
+task({ subagent_type: "reviewer", prompt: "Audita backend/internal/fleet/adapters/http/zone.go clean arch + error wrap" })
+task({ subagent_type: "db-auditor", prompt: "Audita CHECK ST_IsValid ST_Area>0 ST_NPoints 4..101 GIST" })
+
+// Fullstack
+task({ subagent_type: "frontend-auditor", prompt: "Modal Zone name 409 inline, focus trap, draft descarta" })
+task({ subagent_type: "reviewer", prompt: "Handler zone 400 vs 409 vs 429" })
+```
+
+> Si un Step no toca un mundo, **no se dispara** su auditor. En SPEC-004 todos los Steps tocan `web`, por eso `frontend-auditor` es **obligatorio en cada Step**. `reviewer` entra solo para `depguard` final y si aparece backend. El `architect` nunca marca `done` con hallazgo alto abierto de ningún auditor disparado.
 
 ## 13. Rollout Strategy
 
@@ -234,7 +269,7 @@ No feature flag, reusa BFF; orden: `web build` -> `docker compose up --build web
 - [ ] TDD cada Step RED primero `// AC-XXX` AAA luego GREEN
 - [ ] AC-001..012 cubiertos tests verdes `npm test -- --run` + `go test ./... -race` green
 - [ ] `go vet` / `tsc --noEmit` / `docker compose config -q` + `npm run build` green por step
-- [ ] Gates: `reviewer` sin hallazgos altos + `security` depguard + `quality-auditor` hot path si CC>10
+- [ ] Gates: `reviewer` sin hallazgos altos + `security` depguard + `quality-auditor` hot path si CC>10 + `frontend-auditor` **obligatorio si toca `web/**` (en SPEC-004 = en cada Step, ver §12.1 matriz)** — ninguno con hallazgo alto puede quedar abierto
 - [ ] `healthz/metrics` intactos, `api_sse_clients` sigue
 - [ ] Modales a11y `role=dialog` + altura fija `overflow-y-auto` verificada con 100 alerts
 - [ ] `docs/IAUDIT.md` con >=1 hallazgo forzado si IA propone `leaflet-draw` legacy sin cierre
