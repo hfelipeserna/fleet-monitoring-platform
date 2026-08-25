@@ -1,20 +1,41 @@
 import "@testing-library/jest-dom";
+import { afterAll, afterEach, vi } from "vitest";
+
+const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+afterEach(() => {
+  if (!vi.isMockFunction(Math.random)) {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+  }
+});
+
+afterAll(() => {
+  randomSpy.mockRestore();
+});
 
 Object.defineProperty(HTMLElement.prototype, "clientWidth", {
   configurable: true,
-  get() { return 800; },
+  get() {
+    return 800;
+  },
 });
 Object.defineProperty(HTMLElement.prototype, "clientHeight", {
   configurable: true,
-  get() { return 600; },
+  get() {
+    return 600;
+  },
 });
 Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
   configurable: true,
-  get() { return 800; },
+  get() {
+    return 800;
+  },
 });
 Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
   configurable: true,
-  get() { return 600; },
+  get() {
+    return 600;
+  },
 });
 
 HTMLElement.prototype.getBoundingClientRect = function () {
@@ -27,14 +48,20 @@ HTMLElement.prototype.getBoundingClientRect = function () {
     bottom: 600,
     x: 0,
     y: 0,
-    toJSON() { return {}; },
+    toJSON() {
+      return {};
+    },
   } as unknown as DOMRect;
 } as never;
 
 const _origCreateElementNS = document.createElementNS.bind(document);
 document.createElementNS = ((ns: string, tag: string) => {
   const el = _origCreateElementNS(ns, tag);
-  if (ns === "http://www.w3.org/2000/svg" && tag === "svg" && !(el as unknown as { createSVGRect?: unknown }).createSVGRect) {
+  if (
+    ns === "http://www.w3.org/2000/svg" &&
+    tag === "svg" &&
+    !(el as unknown as { createSVGRect?: unknown }).createSVGRect
+  ) {
     (el as unknown as { createSVGRect: () => unknown }).createSVGRect = () => ({});
   }
   return el;
@@ -55,9 +82,15 @@ Object.defineProperty(window, "matchMedia", {
 });
 
 class MockResizeObserver {
-  observe() { return; }
-  unobserve() { return; }
-  disconnect() { return; }
+  observe() {
+    return;
+  }
+  unobserve() {
+    return;
+  }
+  disconnect() {
+    return;
+  }
 }
 globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
@@ -69,5 +102,3 @@ Object.defineProperty(window, "devicePixelRatio", { value: 1, writable: true });
 
 window.scrollTo = () => undefined;
 Element.prototype.scrollTo = () => undefined;
-
-Math.random = () => 0;

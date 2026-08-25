@@ -210,6 +210,22 @@ Por qué falla: DRY breaker drift (cambiar `FailureRatio 0.5->0.6` requiere 3 ed
 Refactor exigido: Exportado `breaker.DefaultTimeout/MinRequests/ConsecutiveThreshold/FailureRatio` + `NewSettings(d)` SSOT, `flow.go` reutiliza `breaker.NewSettings`, `ops.go` con `const retryAfterSeconds`, `BreakerStateProvider`/`HealthProvider` segregados, `OpsHandler{reqs,tools,tokens atomic.Int64}` instanciado, `withRequestID` middleware, `writeJSON` y `metricsPayload` con `strings.Builder` + `strconv.Itoa`, `slog` inyectado, `idgen` con `hex.Encode` buffer y `panic %w`. `go test 6/6 PASS`, `go vet 0`, CC<10.
 Auditor: quality-auditor | architect
 
+## 2026-08-26 — Auditoría: web setup monkey-patch enmascara duplicados [SPEC-004 TASK-004-01]
+Severidad: alta
+Hallazgo: IA `react-web` generó `web/src/test/setup.ts` con `screen.getByText = (text) => { try getByText catch => getAllByText[0] }` global y `Math.random = () => 0`, y `VehicleCard.test.tsx` renderea `VehicleCard + VehicleStatusBadge` suelto duplicando `Moving/⚠️` para que el patch lo tape.
+Evidencia: web/src/test/setup.ts:4-15 (pre refactor, ver git diff 3f677e6..HEAD y quality-auditor ses_fc632d75)
+Por qué falla: Violación test isolation/AAA y Go idiomático: patch global convierte fallo real (`Found multiple elements`) en verde falso, contamina toda la suite; `shared mutable state` sin restore impide paralelizar `vitest --run` y oculta violación `key estable` y re-render duplicado. `Math.random` crudo rompe determinismo SSE jitter y `crypto.randomUUID` fallback.
+Refactor exigido: Eliminado patch (dejar `screen.getByText` nativo), test corregido a no rendear badge duplicado y usar `within`/`getAllByText` explícito, `Math.random` vía `vi.spyOn(Math,"random").mockReturnValue(0)` con `afterEach` guard + `afterAll restore`. `npm test -- --run` 66/66 pass sin patch, `npm run build` y `lint` verdes. Commit feat(portal) TASK-004-01.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: web PLATE_RE duplicada + warning en Status vs Speed [SPEC-004 TASK-004-01]
+Severidad: media
+Hallazgo: IA duplicó `PLATE_RE = /^[A-Z]{3}[0-9]{3}$/` en `web/src/lib/plate.ts` y `/\b[A-Z]{3}[0-9]{3}\b/g` en `web/src/chat/usePlateHighlight.ts`, y puso `⚠️` dentro de `VehicleStatusBadge` (junto a Moving/Idle) dejando `Speed: 90` sin alerta en `VehicleCard`.
+Evidencia: web/src/lib/plate.ts:1 vs web/src/chat/usePlateHighlight.ts:4 y web/src/features/monitoring/VehicleStatusBadge.tsx:11 pre refactor (ses_fc632d75)
+Por qué falla: Viola DRY single source (BR-002): si cambia a 4 letras diverge highlight vs validación; `global regex /g` stateful `lastIndex` flaky en hot path chat 1k replies. Fidelidad Figma rota: spec `Speed: 90 ⚠️ si >80` (AC-001 BR-007) muestra warning en Status, usuario lo asocia mal; test pasaba solo por badge suelto duplicado.
+Refactor exigido: Exportado `PLATE_RE_GLOBAL = /\b[A-Z]{3}[0-9]{3}\b/g` en `lib/plate.ts` e importado en `usePlateHighlight.ts`; movido `⚠️` a `VehicleCard.tsx` junto a `Speed:` y dejado `VehicleStatusBadge` puro `font-semibold bg-green-50` para pasar WCAG AA. `npm test` 66/66 pass. Commit feat(portal) TASK-004-01.
+Auditor: quality-auditor | frontend-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
