@@ -8,7 +8,7 @@ export function usePlateHighlight() {
 
   const highlightFromReply = useCallback(
     (reply: string) => {
-      const plates = reply.match(PLATE_RE_GLOBAL);
+      const plates = reply.match(new RegExp(PLATE_RE_GLOBAL.source, "g"));
       if (plates && plates.length > 0) setSelectedPlate(plates[0]!);
     },
     [setSelectedPlate],

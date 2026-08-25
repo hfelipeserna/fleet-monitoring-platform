@@ -1,16 +1,12 @@
 import "@testing-library/jest-dom";
-import { afterAll, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
-const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
-
-afterEach(() => {
-  if (!vi.isMockFunction(Math.random)) {
-    vi.spyOn(Math, "random").mockReturnValue(0);
-  }
+beforeEach(() => {
+  vi.spyOn(Math, "random").mockReturnValue(0);
 });
 
-afterAll(() => {
-  randomSpy.mockRestore();
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 Object.defineProperty(HTMLElement.prototype, "clientWidth", {

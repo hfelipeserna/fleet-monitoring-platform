@@ -28,7 +28,7 @@ export default function VehicleSearch({ onSearch }: Props) {
     >
       <input
         aria-label="Plate"
-        aria-describedby="plate-hint"
+        aria-describedby={showHint ? "plate-hint" : undefined}
         placeholder="Plate"
         value={plate}
         onChange={(e) => setPlate(e.target.value)}

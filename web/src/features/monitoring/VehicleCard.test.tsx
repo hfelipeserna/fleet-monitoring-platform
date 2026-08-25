@@ -195,7 +195,7 @@ describe("VehicleCard", () => {
       render(
         <div>
           <VehicleCard vehicle={vehicleIdle} />
-          <VehicleStatusBadge speed={0} />
+          <VehicleStatusBadge status="idle" />
         </div>,
       );
       // Assert
@@ -221,7 +221,7 @@ describe("VehicleCard", () => {
       render(
         <div>
           <VehicleCard vehicle={vehicle80} />
-          <VehicleStatusBadge speed={80} />
+          <VehicleStatusBadge status="moving" />
         </div>,
       );
       // Assert
@@ -236,7 +236,7 @@ describe("VehicleCard", () => {
       render(
         <div>
           <VehicleCard vehicle={vehicle81} />
-          <VehicleStatusBadge speed={81} />
+          <VehicleStatusBadge status="moving" />
         </div>,
       );
       // Assert
