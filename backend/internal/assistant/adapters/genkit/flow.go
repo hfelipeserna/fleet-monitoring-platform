@@ -11,6 +11,7 @@ import (
 
 	"fleetmonitoring/backend/internal/assistant/application"
 	"fleetmonitoring/backend/internal/assistant/domain"
+	"fleetmonitoring/backend/internal/assistant/infra/breaker"
 	shared "fleetmonitoring/backend/internal/shared/domain"
 )
 
@@ -59,15 +60,7 @@ type AssistantFlow struct {
 }
 
 func NewAssistantFlow(q application.FleetQuerier, client *StubGeminiClient) *AssistantFlow {
-	cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name:        "gemini",
-		Interval:    30 * time.Second,
-		Timeout:     30 * time.Second,
-		MaxRequests: 1,
-		ReadyToTrip: func(c gobreaker.Counts) bool {
-			return c.Requests >= 5 && (c.ConsecutiveFailures >= 3 || float64(c.TotalFailures)/float64(c.Requests) >= 0.5)
-		},
-	})
+	cb := gobreaker.NewCircuitBreaker(breaker.NewSettings(breaker.DefaultTimeout))
 	f := &AssistantFlow{
 		querier: q,
 		gemini:  client,

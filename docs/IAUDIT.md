@@ -194,6 +194,22 @@ Por qué falla: SRP/CC>10 impide testeo `2^17` paths, `default` hace backpressur
 Refactor exigido: Extraídos `acquire/resolveToolCall/parseFindStoppedArgs/handleFindStopped` + registry `map[string]ToolHandler`, semáforo blocking `select {case sem<-: case <-timeoutCtx.Done():}` sin `default` + `atomic.Int32` count, `gobreaker.CircuitBreaker{Name:"gemini", 50% 30s}` wrap cada querier, sqlRegex ampliada `drop|delete|update|union|or 1=1|--`, `SystemPrompt` endurecido con delimitadores, `MaxOutputTokens 1024` env-tunable documentado. `go test 12/12 PASS 15s`, `go vet 0`, CC<10. Commit Step4.
 Auditor: quality-auditor | security | scalability | architect
 
+## 2026-08-24 — Auditoría: assistant/genkit flow CC 11 + doc.go vacío [SPEC-003 Step4 fix]
+Severidad: baja
+Hallazgo: Tras refactor Step4, `guard.go:75 extractAllowedZones` CC 11 >10 por type-switch anidado `[]string`/`[]any`, `flow.go:158 parseFindStoppedArgs` 44L y `flow.go:302 Chat` 44L >40, `adapters/genkit/doc.go` solo `package genkit` sin código (445B vacío), y `guard.go:47` `if v == nil` imposible en `default:` de `any` switch.
+Evidencia: backend/internal/assistant/adapters/genkit/guard.go:47,75, flow.go:158,302, doc.go:1-8, quality-auditor ses_fc9e3afe
+Por qué falla: CC>10 dificulta test mutación, líneas>40 violan clean code, doc.go vacío contamina paquete, condición imposible indica lógica no cubierta y `go vet` SA5011.
+Refactor exigido: Eliminado `doc.go` (`git rm`), extraído `parseIntArg`/`extractZoneID` y `extractFromAny` para bajar CC `ValidateAllowlist` 23→6 y `parseFindStoppedArgs` 44L→15L, `flow.go:Chat` extraído `dispatch` (43L→28L) + preallocate `parts := make(0,len(rows))`, `guard.go` sin `if v==nil` imposible. `go vet 0`, `go test 12/12 PASS`. Commit Step4 fix.
+Auditor: quality-auditor | architect
+
+## 2026-08-24 — Auditoría: assistant/infra/breaker + ops DRY/magic/global [SPEC-003 Step5]
+Severidad: media
+Hallazgo: IA generó `assistant/infra/breaker/breaker.go` con `NewAssistantBreaker`/`NewAssistantBreakerWithTimeout` duplicando 7L Settings `Name:gemini Interval 30s Timeout 30s MaxRequests 1 ReadyToTrip 50%`, y `assistant/adapters/http/ops.go` con `var agentRequestsTotal atomic.Int64` package-global, `Retry-After: "30"` literal sin const, `fmt.Fprintf` 14× sin `Builder`, `slog.Default` global, `OpsProvider` gorda con `any(DBPoolStat)` y `NatsConnected` no usado, `idgen.GenerateUUID` con `Sprintf` 5 allocs y `rand.Read` sin error wrap.
+Evidencia: backend/internal/assistant/infra/breaker/breaker.go:34-45, backend/internal/assistant/adapters/http/ops.go:14-18,122,150-162, quality-auditor ses_fc9c9271
+Por qué falla: DRY breaker drift (cambiar `FailureRatio 0.5->0.6` requiere 3 edits), magic `"30"` desacoplado de `breaker.Timeout()` miente header si cambia a 15s, global atomic rompe test isolation (`go test -parallel` flakiness), error swallow `Encode` deja body truncado sin log, ISP gorda fuerza fakers implementar `NatsConnected`.
+Refactor exigido: Exportado `breaker.DefaultTimeout/MinRequests/ConsecutiveThreshold/FailureRatio` + `NewSettings(d)` SSOT, `flow.go` reutiliza `breaker.NewSettings`, `ops.go` con `const retryAfterSeconds`, `BreakerStateProvider`/`HealthProvider` segregados, `OpsHandler{reqs,tools,tokens atomic.Int64}` instanciado, `withRequestID` middleware, `writeJSON` y `metricsPayload` con `strings.Builder` + `strconv.Itoa`, `slog` inyectado, `idgen` con `hex.Encode` buffer y `panic %w`. `go test 6/6 PASS`, `go vet 0`, CC<10.
+Auditor: quality-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
