@@ -53,6 +53,13 @@ describe("Map", () => {
       }
       return Promise.resolve(new Response("{}", { status: 200 }));
     });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() { return 800; } });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return 600; } });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return 800; } });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get() { return 600; } });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON() { return {}; } } as unknown as DOMRect;
+    } as never;
   });
 
   afterEach(() => {

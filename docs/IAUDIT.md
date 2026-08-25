@@ -238,6 +238,14 @@ Auditor: quality-auditor | frontend-auditor | architect
 
 ## Convenciones
 
+## 2026-08-26 — Auditoría: AlertsPanel dedup O(n²) + CC keepalive [SPEC-004 TASK-004-03a]
+Severidad: alta
+Hallazgo: IA generó `useAlertsSSE` con `setAlerts(prev=>{ if(prev.some(k)) return prev; return [...prev,data] })` O(n) scan + copia por `alert:critical` sin cap, y `isKeepAlive` + `JSON.parse` con 5 chequeos redundantes `raw === ":ping"` / `type==="ping"` / `trimmed===":ping"` / `data===":ping"` con try.
+Evidencia: web/src/hooks/useAlertsSSE.ts:40-44 y 22-36 pre refactor (ses_fc5e602)
+Por qué falla: `O(n²)` total: 1000 alertas retenidas * 1000 scan =1M comparaciones + 500k copias → fuga memoria navegador 5k flota (NFR-002), sin cap DOM crece infinito. CC>10 impide test `2^17` paths y `:ping` coment line SSE (BR-005) nunca dispara onmessage.
+Refactor exigido: Extraído `lib/alert.ts` `getDedupKey/isValidAlert/isKeepAlive/parseAlert` single source CC<6, `useAlertsSSE` con `Set O(1) + MAX_ALERTS 100 cap` y `useSSE` filtra keepalive en dueño protocolo. `AlertsPanel` `role=log aria-live` + `role=list/listitem` + `<time dateTime>`. `setup.ts` limitado a jest-dom sin monkey-patch. `82/82 pass` re-auditoría 0 altas.
+Auditor: quality-auditor | frontend-auditor | architect
+
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".

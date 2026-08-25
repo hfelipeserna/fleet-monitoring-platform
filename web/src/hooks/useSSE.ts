@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { isKeepAlive } from "../lib/alert";
 
 export function useSSE(
   url: string | null,
@@ -43,6 +44,10 @@ export function useSSE(
         backoff = Math.min(backoff * 2, 30000);
       };
       const handler = (e: Event) => {
+        const me = e as MessageEvent;
+        const raw = me.data;
+        if (isKeepAlive(raw)) return;
+        if ((e as unknown as { type?: string }).type === "ping") return;
         onMessageRef.current?.(e as MessageEvent);
       };
       es.onmessage = handler as (e: MessageEvent) => void;

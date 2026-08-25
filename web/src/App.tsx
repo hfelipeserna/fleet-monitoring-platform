@@ -2,12 +2,15 @@ import Map from "./map/Map";
 import ChatWidget from "./chat/ChatWidget";
 import { useFleetStream } from "./hooks/useFleetStream";
 import { useFleetStore } from "./store/fleetStore";
+import { usePortalStore } from "./store/portalStore";
+import AlertsPanel from "./features/monitoring/AlertsPanel";
 import VehicleSearch from "./features/monitoring/VehicleSearch";
 import VehicleCard from "./features/monitoring/VehicleCard";
 
 export default function App() {
   const { vehicles, vehicle, selectedPlate } = useFleetStream();
   const setSelectedPlate = useFleetStore((s) => s.setSelectedPlate);
+  const activeBottom = usePortalStore((s) => s.activeBottom);
   const notFound = !!selectedPlate && vehicles.length > 0 && vehicle === null;
 
   function handleClear() {
@@ -36,6 +39,7 @@ export default function App() {
         <div className="p-2 border-t border-gray-200 bg-white">
           <VehicleCard vehicle={vehicle} notFound={notFound} />
         </div>
+        <AlertsPanel hidden={activeBottom !== "alerts"} />
       </div>
       <ChatWidget />
     </div>
