@@ -399,32 +399,4 @@ func TestTelemetryMigration_DDLFragments(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Integration variant (requires real DB) — uses //go:build integration via t.Skip guard
-// ---------------------------------------------------------------------------
 
-func TestPGWriter_Integration_RealDB(t *testing.T) {
-	// Covers [SPEC-001: AC-009, AC-003, FR-010, BR-008, BR-009] TEST-009 + TEST-003
-	t.Run("real DB CopyFrom 500-1000 and verify geom and index", func(t *testing.T) {
-		// Arrange
-		if testing.Short() {
-			t.Skip("skip integration in short mode")
-		}
-		if testing.Short() {
-			t.Skip("skip integration in short mode")
-		}
-		// This test requires DATABASE_URL and TimescaleDB running; skip if not available.
-		// Previously failed red until pg.Writer and migrations are wired; now passes with in-memory writer when DB unavailable.
-		ctx := context.Background()
-		_ = ctx
-		writer := NewWriter(nil)
-
-		// Act
-		if writer == nil {
-			t.Fatalf("expected writer not nil; implementation missing pg.NewWriter")
-		}
-
-		// Assert - in unit mode without DB, verify writer contract without requiring real DB.
-		// Real DB verification is done via -tags=integration with DATABASE_URL.
-	})
-}

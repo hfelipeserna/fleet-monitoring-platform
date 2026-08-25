@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, GeoJSON } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
+import { getApiBase } from "../lib/api";
 
 export type Vehicle = {
   plate: string;
@@ -35,28 +36,21 @@ export default function Map({ vehicles = [], zones }: MapProps) {
   const [geoJson, setGeoJson] = useState<unknown>(zones ?? null);
 
   useEffect(() => {
-    if (zones) {
-      setGeoJson(zones);
-    }
+    if (zones) setGeoJson(zones);
   }, [zones]);
 
   useEffect(() => {
-    const base = (import.meta as unknown as { env?: Record<string, string> }).env
-      ?.VITE_API_BASE_URL as string | undefined;
-    const url = base ? `${base.replace(/\/$/, "")}/api/zones` : "/api/zones";
-    let cancelled = false;
-    fetch(url)
+    const controller = new AbortController();
+    const base = getApiBase();
+    const url = base ? `${base}/api/zones` : "/api/zones";
+    fetch(url, { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
-        if (!cancelled && !zones) setGeoJson(data);
+        if (!zones) setGeoJson(data);
       })
       .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [zones]);
-
-  const memoizedVehicles = useMemo(() => vehicles, [vehicles]);
 
   return (
     <MapContainer
@@ -68,33 +62,20 @@ export default function Map({ vehicles = [], zones }: MapProps) {
     >
       <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' />
 
-      {memoizedVehicles.length > 500 ? (
+      {vehicles.length > 500 ? (
         <MarkerClusterGroup chunkedLoading>
-          {memoizedVehicles.map((v) => (
-            <Marker
-              key={v.plate}
-              position={[v.lat, v.lon]}
-              title={v.plate}
-              alt={`vehicle ${v.plate}`}
-            />
+          {vehicles.map((v) => (
+            <Marker key={v.plate} position={[v.lat, v.lon]} title={v.plate} alt={`vehicle ${v.plate}`} />
           ))}
         </MarkerClusterGroup>
       ) : (
-        memoizedVehicles.map((v) => (
-          <Marker
-            key={v.plate}
-            position={[v.lat, v.lon]}
-            title={v.plate}
-            alt={`vehicle ${v.plate}`}
-          />
+        vehicles.map((v) => (
+          <Marker key={v.plate} position={[v.lat, v.lon]} title={v.plate} alt={`vehicle ${v.plate}`} />
         ))
       )}
 
       {geoJson ? (
-        <GeoJSON
-          data={geoJson as never}
-          style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })}
-        />
+        <GeoJSON data={geoJson as never} style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })} />
       ) : null}
     </MapContainer>
   );

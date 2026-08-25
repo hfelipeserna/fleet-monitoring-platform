@@ -1,2 +1,4 @@
 578027a68c947aa6f5f5b4c42532382b9cf0338a:README.md:generic-api-key:128
 # false positive p95_latency_ms metric name flagged as generic-api-key - fingerprint allowlist
+52a1cb2b16af56d987c578d13b2f15520fcd6431:backend/internal/assistant/adapters/genkit/guard_test.go:jwt:62
+# false positive: fake JWT eyJhbGciOi... used in FilterOutput test (not a real secret) - SPEC-003 AC-003

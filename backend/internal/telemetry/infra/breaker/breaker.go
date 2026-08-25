@@ -3,6 +3,7 @@ package breaker
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/sony/gobreaker"
@@ -58,6 +59,9 @@ func NewBreakerWithSettings(name string, maxRequests uint32, timeout time.Durati
 }
 
 func (b *Breaker) State() string {
+	if b == nil || b.cb == nil {
+		return "closed"
+	}
 	switch b.cb.State() {
 	case gobreaker.StateOpen:
 		return "open"
@@ -69,6 +73,9 @@ func (b *Breaker) State() string {
 }
 
 func (b *Breaker) IsOpen() bool {
+	if b == nil || b.cb == nil {
+		return false
+	}
 	return b.cb.State() == gobreaker.StateOpen
 }
 
@@ -81,12 +88,25 @@ func IsOpenBreaker(b *Breaker) bool {
 	return b.IsOpen()
 }
 
+func isNil(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
 // IsOpen reports whether any Breaker implementation is open, nil-safe with fallback to State() string compare.
 func IsOpen(b interface {
 	State() string
 	IsOpen() bool
 }) bool {
-	if b == nil {
+	if isNil(b) {
 		return false
 	}
 	return b.IsOpen()
@@ -100,10 +120,16 @@ func (b *Breaker) Allow() error {
 }
 
 func (b *Breaker) RecordSuccess() {
+	if b == nil || b.cb == nil {
+		return
+	}
 	_, _ = b.cb.Execute(func() (any, error) { return nil, nil })
 }
 
 func (b *Breaker) RecordFailure() {
+	if b == nil || b.cb == nil {
+		return
+	}
 	_, _ = b.cb.Execute(func() (any, error) { return nil, errors.New("failure") })
 }
 

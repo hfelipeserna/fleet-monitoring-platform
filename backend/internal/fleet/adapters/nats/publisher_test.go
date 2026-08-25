@@ -35,6 +35,7 @@ type fakeFleetJS struct {
 	publishCalled int
 }
 
+func (f *fakeFleetJS) Conn() *nats.Conn { return nil }
 func (f *fakeFleetJS) Publish(ctx context.Context, subject string, payload []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
 	f.publishCalled++
 	f.capturedSubject = subject

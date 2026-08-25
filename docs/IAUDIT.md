@@ -130,6 +130,86 @@ Por qué falla: Violación corrección paginación y NFR-001 p95 <150ms. `OR` de
 Refactor exigido: Eliminado bloque `len==limit`, solo `len>limit` genera next con `rounded[:limit]`. Cambiado a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC` y documentado índice `telemetry_plate_received_at_idx`. Test `TestQueryService_LastPositions/limit 2` ajustado a 3 posiciones para validar limit+1. `EXPLAIN` futuro debe assert `Index Scan`. Commit Step2.
 Auditor: quality-auditor | db-auditor | architect
 
+## 2026-08-24 — Auditoría: assistant/domain Round3 duplicado DRY + mutación Validate [SPEC-003 Step1]
+Severidad: media
+Hallazgo: go-backend generó `assistant/domain/geo.go` con `Round3(v) {math.Round(v*1e3)/1e3}` duplicado idéntico a `shared/domain/geo.go:16` y `StoppedVehicle.Validate()` con `*receiver` que mutaba `Lat/Lon` vía `Round3` antes del `if len(errs)>0 return` (side-effect incluso en error path) y validación de rango -90..90 antes de redondear.
+Evidencia: backend/internal/assistant/domain/geo.go:1-7, backend/internal/shared/domain/geo.go:16-18, backend/internal/assistant/domain/stopped.go:40-44 (pre fix, ver git diff Step1), quality-auditor ses_fca2f673 y reviewer ses_fca2e458
+Por qué falla: Viola DRY (BR-004 minimización 3dec es fuente única; duplicación diverge si cambia a 4dec) y SRP/CQS (Validate puro no debe mutar en fallo; Validate con side-effect rompe VO inmutabilidad y deja objeto parcialmente normalizado e inválido; orden valida rango antes de round pierde canónico 90.000).
+Refactor exigido: `assistant/domain/geo.go` reescrito como alias `func Round3(v float64) float64 {return shared.Round3(v)}` (single source `shared`), `StoppedVehicle.Validate()` reordenado para retornar error antes de asignar `v.Lat/Round3`; mutación solo en éxito. Tests `domain_test TestStoppedVehicle` siguen verdes sin mutación en error. Commit Step1 fix.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: assistant/domain plate stringly-typed pierde VO + ErrValidation [SPEC-003 Step1]
+Severidad: media
+Hallazgo: IA generó `ChatRequest.Plate *string` y `StoppedVehicle.Plate string` en lugar de `*shared.Plate`/`shared.Plate` tipado, descartando retorno normalizado de `shared.ParsePlate` (que hace `ToUpper` + regex `^[A-Z]{3}[0-9]{3}$`) y dejando validación solo vía regex local; además riesgo de duplicar `ErrValidation` si no se aliasa.
+Evidencia: backend/internal/assistant/domain/chat.go:18 `Plate *string`, stopped.go:12 `Plate string`, chat.go:34 `shared.ParsePlate(*r.Plate)` ignora `Plate` retornado, quality-auditor H3 ses_fca2f673, reviewer H4 ses_fca2e458
+Por qué falla: Rompe strong-typing VO, obliga re-parse en cada consumer `FleetQuerier.GetVehicleStatus(plate shared.Plate)` y permite transportar `gtp980` lowercase si caller olvida normalizar; viola plan §12 Step1 `ChatRequest{Plate *Plate}` y BR-009 plate normalizado. Si se duplica `ErrValidation` con `errors.New`, `errors.Is` falla y handler mapea 400→500 (ya auditado en IAUDIT 2026-08-24 fleet/domain duplicado).
+Refactor exigido: Mantenido `*string` para Step1 por compatibilidad con tests, pero registrado deuda: `chat.go:12 var ErrValidation = shared.ErrValidation` alias único corrige sentinela (hereda lección IAUDIT 2026-08-24), y documentado refactor pendiente a `Plate *shared.Plate` en Step2/3 antes de cablear `assistant/adapters/genkit/tools.go` (transportar Plate VO normalizado end-to-end). Tests `chat_test.go:193 lower gtp980` validan vía `ParsePlate` normalizado.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: assistant/domain plate VO tipado corregido + shared ValidateMessage [SPEC-003 Step1 fix]
+Severidad: media
+Hallazgo: Tras IAUDIT anterior que dejó `Plate *string` como deuda, go-backend mantuvo validación local duplicada y `chat.go:155 RuneCount` duplicaba `assistant/domain/chat.go Validate` sin `TrimSpace`; además `ChatRequest.Validate` mutaba `*r.Plate` antes de `len(errs)` y magic `20` duplicado en `NewChatRequest`/`ApplyDefaults`.
+Evidencia: backend/internal/assistant/domain/chat.go:18-35, backend/internal/fleet/adapters/http/chat.go:149-158, backend/internal/shared/domain/geo.go:21, quality-auditor re-audit ses_fca225ec
+Por qué falla: Viola DRY/BR-009 single source `ValidateMessage 1..4000` y CQS (mutación en error), y strong-typing VO.
+Refactor exigido: Creado `shared/domain/chat_validation.go` con `ValidateMessage(msg string) error` (TrimSpace + RuneCount + ErrValidation) y `shared/domain/requestid.go` con `RequestIDKey`, `assistant/domain/chat.go` ahora `Plate *shared.Plate`, `Validate()` delega a `shared.ValidateMessage`, mutación diferida `normalizedPlate` solo en éxito, const `DefaultMinMinutes/DefaultLimit` y `fleet/domain/geo.go` delega `validateUUID` a `shared.IsValidUUID`. Tests `chat_test.go` actualizados a `platePtr` tipado y `documents spaces` espera error tras trim.
+Auditor: quality-auditor | reviewer | architect
+
+## 2026-08-24 — Auditoría: fleet/http/chat.go BFF alta CC18, XFF spoof, breaker strings [SPEC-003 Step2]
+Severidad: alta
+Hallazgo: IA generó `fleet/adapters/http/chat.go:106-219` con `ServeHTTP` 114L CC 18/27 (17 if), `sync.Map` limiters sin evicción ni `isTrustedProxy` (X-Forwarded-For spoofable → bypass 10/min y OOM unbounded), breaker `ReadyToTrip` sin `Requests<5` guard, classification `strings.Contains("circuit breaker is open")` + `ToLower` allocs + `&&`/`||` precedencia rota, Content-Type `Contains("application/json")` laxo, log `invalid json: %v` expone err, `clientIP` via `LastIndex(":")` falla IPv6 `[::1]:8080`, validación `1..4000` duplicada local vs `assistant/domain`.
+Evidencia: backend/internal/fleet/adapters/http/chat.go:23-264 (pre refactor, ver git), reviewer ses_fca185e0, security ses_fca16f12, quality-auditor ses_fca163a6
+Por qué falla: OWASP API4 Unrestricted Resource Consumption (XFF spoof → cuota Gemini ilimitada + Map OOM 16GB), CC>10 impide testeo `2^17` paths, strings.Contains frágil rompe 429/503 mapping, DRY 2 fuentes drift, log injection.
+Refactor exigido: Extraídos `shared/domain/chat_validation.go` `ValidateMessage` y `requestid.go` `RequestIDKey`, `chat.go` refactorizado a `ServeHTTP` 27L CC<6 con helpers `ensureRequestID/checkMethod/checkContentType/decodeAndValidate/checkRateLimit/doChat/classifyChatError` solo `errors.Is`, `mime.ParseMediaType` + `DisallowUnknownFields`, `isTrustedProxy/getIP` + `limiterEntry{s,lastSeen}` sweep 10m, `shared.WithRequestID`, `writeChatJSON` headers `nosniff/no-store`, `net.SplitHostPort` IPv6, `NewChatHandlerWithOptions`. `go test -run TestChatBFF` PASS 0.58s, `go vet 0`, CC <10, depguard `fleet !→ assistant` OK. Commit Step2.
+Auditor: reviewer | security | quality-auditor | architect
+
+## 2026-08-24 — Auditoría: assistant/pg ST_Within DRY/CC/Round3 + clamp [SPEC-003 Step3]
+Severidad: media
+Hallazgo: IA generó `assistant/application/stopped.go` y `fleet/adapters/pg/stopped.go` con validación `minMinutes 1..1440` + `limit 1..20` duplicada con literales `1,20,1440`, `pg.FindStoppedInZones` 54L CC 13 (4 responsabilidades), triple `Round3` `pg->application->domain` idempotente pero redundante, `limit 0=>1` vs `DefaultLimit 20` inconsistente, `stoppedQuery` monolínea 280 chars sin preallocate `make(0,limit)` y `zoneArg any` boxing.
+Evidencia: backend/internal/assistant/application/stopped.go:23-33, backend/internal/fleet/adapters/pg/stopped.go:22-75 (pre fix), quality-auditor ses_fca0563a, db-auditor ses_fca06230
+Por qué falla: Viola DRY single source (cambio `LimitMax 20->50` requiere 2 ediciones), CC>10 bloquea test exhaustivo, triple `Round3` desperdicia `2*20` ops/request y oscurece SSOT `shared.Round3`, `limit 0=>1` rompe `BR-004` mínima sorpresa.
+Refactor exigido: Creado `shared/domain/stopped_validation.go` con `ValidateStoppedParams` + const `StoppedLimit/ MinMinutes` SSOT, `assistant/domain/chat.go` alias `LimitMin/Max`, `application/stopped.go` y `pg/stopped.go` delegan a helper, `pg` refactorizado a `validateAndClamp/queryStopped/scanStoppedRows` orquestador 16L CC 1, `stoppedQuery` multilínea, `out := make(0,limit)`, `limit 0=>20` unificado, `Round3` solo en `domain.Validate/Normalized`. `go test` PASS, `go vet 0`, CC<6. Commit Step3.
+Auditor: quality-auditor | db-auditor | architect
+
+## 2026-08-24 — Auditoría: fleet/pg ST_Within escalabilidad GIST sin ventana ni índice speed [SPEC-003 Step3]
+Severidad: alta
+Hallazgo: IA propuso `stoppedQuery` `SELECT DISTINCT ON (plate) ... ST_Within(t.geom::geometry, cz.geom) WHERE speed=0 AND received_at <= now()-interval` con `GIST ((geom::geometry))` per-chunk y `LIMIT 20` sin ventana `received_at > now()-24h` ni índice parcial `WHERE speed=0`, con `DISTINCT ON (plate) ORDER BY plate, received_at DESC` `O(P log P)` sobre 5k plates.
+Evidencia: backend/internal/fleet/adapters/pg/stopped.go:12, backend/migrations/0001_telemetry.sql:45, scalability ses_fca04137, db-auditor ses_fca06230
+Por qué falla: GIST per-chunk no permite chunk pruning con `<= now()-20m` open-ended (`90 chunks` @90d retention → 3.6M filas/query), `speed=0` sin índice → `Seq Scan`/`BitmapAnd` 14M `ST_Within`/query, `DISTINCT ON` sort compite con GIST y escanea `~200-2000` plates para 20 resultados. NFR-001 `p95 <150ms` incumplido a >30 chunks/500M filas. `EXPLAIN` sin `speed` índice da `Seq Scan`.
+Refactor exigido: Creada migración `0004_telemetry_speed_geom.sql` con `telemetry_speed0_received_at_idx (received_at DESC) WHERE speed=0` y `telemetry_speed0_geom_idx GIST ((geom::geometry)) WHERE speed=0`, documentado `EXPLAIN` debe mostrar `BitmapAnd` no `Seq Scan`, ventana `received_at > now()-24h` como deuda para ADR, `LATERAL` vs `DISTINCT ON` anotado, `statement_timeout 2s` + breaker en tools layer. Escalable con límites MVP 1k/30d, quiebre >5k/90d.
+Auditor: scalability | db-auditor | architect
+
+## 2026-08-24 — Auditoría: assistant/genkit ValidateAllowlist fail-open + bypass validation [SPEC-003 Step4]
+Severidad: alta
+Hallazgo: IA generó `assistant/adapters/genkit/guard.go:59-86` con `ValidateAllowlist` fail-open (`if val==nil || len(allowed)==0 => nil`) y `flow.go:126-163` que llamaba `querier.FindStoppedInZones` sin `ValidateStoppedParams` ni `IsValidUUID` ni clamp `limit 10000`, y `flow.go:188-189` con `p, _ := shared.ParsePlate(s)` ignorando error. Además `guard.go:15` usaba `type contextKey string` colisionable.
+Evidencia: backend/internal/assistant/adapters/genkit/guard.go:59-92, flow.go:126-189 (pre fix), reviewer ses_fc9ef94f, security ses_fc9ee9a4
+Por qué falla: OWASP ASVS 4.1.3 Broken Access Control (atacante sin JWT enumera todas las zonas), OWASP API4 Unrestricted Resource Consumption (LLM inyecta limit 10000 → scan hypertable), BR-002/BR-009 allowlist y validación en código nunca delegada al LLM.
+Refactor exigido: `guard.go` cambiado a `type claimsKey struct{}` + `ValidateAllowlist` fail-closed (`zoneID !=nil && (val==nil||len==0) => 403`), aplicado a todos los tools, `flow.go` parsea args vía `shared.ValidateStoppedParams` y `shared.ParsePlate` con `fmt.Errorf(...%w)` + clamp, helpers `parseFindStoppedArgs`/`handle*` y registry `map[string]ToolHandler` OCP, `go test` 12/12 PASS. Commit Step4.
+Auditor: reviewer | security | architect
+
+## 2026-08-24 — Auditoría: assistant/genkit god function CC18 + semaphore default + breaker + sqlRegex estrecha [SPEC-003 Step4]
+Severidad: alta
+Hallazgo: IA generó `flow.go:81-219` con `Chat()` 138L CC>18 con 6 responsabilidades (validación, semáforo, delay, heurística Contains, coerción any→typed, allowlist, query, Validate, build reply), `select {case sem<-: default:503}` fail-fast inalcanzable para timeoutCtx, sin `gobreaker` (solo sem 20 + timeout 15s), `guard.go:23` sqlRegex solo `DROP TABLE|SELECT *|INSERT INTO|BEGIN;`, `SystemPrompt` sin delimitadores, `CurrentSemaphoreCount() len(sem)` data race, y `tools.go` sin consts ni `ToolHandler` registry.
+Evidencia: backend/internal/assistant/adapters/genkit/flow.go:81-230, guard.go:23, quality-auditor ses_fc9ee9a2, security ses_fc9ee9a4, scalability ses_fc9ee9a1
+Por qué falla: SRP/CC>10 impide testeo `2^17` paths, `default` hace backpressure incorrecto (21 concurrentes → 503 storm vs cola TTL), sin breaker `20 slots *15s` = cascada DB, regex SQL narrow bypasea `DELETE/UNION/UPDATE/OR 1=1`, OOM free tier 10 RPM sin breaker.
+Refactor exigido: Extraídos `acquire/resolveToolCall/parseFindStoppedArgs/handleFindStopped` + registry `map[string]ToolHandler`, semáforo blocking `select {case sem<-: case <-timeoutCtx.Done():}` sin `default` + `atomic.Int32` count, `gobreaker.CircuitBreaker{Name:"gemini", 50% 30s}` wrap cada querier, sqlRegex ampliada `drop|delete|update|union|or 1=1|--`, `SystemPrompt` endurecido con delimitadores, `MaxOutputTokens 1024` env-tunable documentado. `go test 12/12 PASS 15s`, `go vet 0`, CC<10. Commit Step4.
+Auditor: quality-auditor | security | scalability | architect
+
+## 2026-08-24 — Auditoría: assistant/genkit flow CC 11 + doc.go vacío [SPEC-003 Step4 fix]
+Severidad: baja
+Hallazgo: Tras refactor Step4, `guard.go:75 extractAllowedZones` CC 11 >10 por type-switch anidado `[]string`/`[]any`, `flow.go:158 parseFindStoppedArgs` 44L y `flow.go:302 Chat` 44L >40, `adapters/genkit/doc.go` solo `package genkit` sin código (445B vacío), y `guard.go:47` `if v == nil` imposible en `default:` de `any` switch.
+Evidencia: backend/internal/assistant/adapters/genkit/guard.go:47,75, flow.go:158,302, doc.go:1-8, quality-auditor ses_fc9e3afe
+Por qué falla: CC>10 dificulta test mutación, líneas>40 violan clean code, doc.go vacío contamina paquete, condición imposible indica lógica no cubierta y `go vet` SA5011.
+Refactor exigido: Eliminado `doc.go` (`git rm`), extraído `parseIntArg`/`extractZoneID` y `extractFromAny` para bajar CC `ValidateAllowlist` 23→6 y `parseFindStoppedArgs` 44L→15L, `flow.go:Chat` extraído `dispatch` (43L→28L) + preallocate `parts := make(0,len(rows))`, `guard.go` sin `if v==nil` imposible. `go vet 0`, `go test 12/12 PASS`. Commit Step4 fix.
+Auditor: quality-auditor | architect
+
+## 2026-08-24 — Auditoría: assistant/infra/breaker + ops DRY/magic/global [SPEC-003 Step5]
+Severidad: media
+Hallazgo: IA generó `assistant/infra/breaker/breaker.go` con `NewAssistantBreaker`/`NewAssistantBreakerWithTimeout` duplicando 7L Settings `Name:gemini Interval 30s Timeout 30s MaxRequests 1 ReadyToTrip 50%`, y `assistant/adapters/http/ops.go` con `var agentRequestsTotal atomic.Int64` package-global, `Retry-After: "30"` literal sin const, `fmt.Fprintf` 14× sin `Builder`, `slog.Default` global, `OpsProvider` gorda con `any(DBPoolStat)` y `NatsConnected` no usado, `idgen.GenerateUUID` con `Sprintf` 5 allocs y `rand.Read` sin error wrap.
+Evidencia: backend/internal/assistant/infra/breaker/breaker.go:34-45, backend/internal/assistant/adapters/http/ops.go:14-18,122,150-162, quality-auditor ses_fc9c9271
+Por qué falla: DRY breaker drift (cambiar `FailureRatio 0.5->0.6` requiere 3 edits), magic `"30"` desacoplado de `breaker.Timeout()` miente header si cambia a 15s, global atomic rompe test isolation (`go test -parallel` flakiness), error swallow `Encode` deja body truncado sin log, ISP gorda fuerza fakers implementar `NatsConnected`.
+Refactor exigido: Exportado `breaker.DefaultTimeout/MinRequests/ConsecutiveThreshold/FailureRatio` + `NewSettings(d)` SSOT, `flow.go` reutiliza `breaker.NewSettings`, `ops.go` con `const retryAfterSeconds`, `BreakerStateProvider`/`HealthProvider` segregados, `OpsHandler{reqs,tools,tokens atomic.Int64}` instanciado, `withRequestID` middleware, `writeJSON` y `metricsPayload` con `strings.Builder` + `strconv.Itoa`, `slog` inyectado, `idgen` con `hex.Encode` buffer y `panic %w`. `go test 6/6 PASS`, `go vet 0`, CC<10.
+Auditor: quality-auditor | architect
+
 ## Convenciones
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.

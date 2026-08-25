@@ -43,34 +43,45 @@ type Handler struct {
 	mux         *http.ServeMux
 }
 
-func NewHandler(q Querier, ops ...OpsProvider) http.Handler {
-	var p OpsProvider = defaultOps{}
-	if len(ops) > 0 && ops[0] != nil {
-		p = ops[0]
+type HandlerOption func(*Handler)
+
+func WithZoneCounter(zc ZoneCounter) HandlerOption {
+	return func(h *Handler) { h.zoneCounter = zc }
+}
+
+func WithOps(p OpsProvider) HandlerOption {
+	return func(h *Handler) {
+		if p != nil {
+			h.ops = p
+		}
 	}
-	h := &Handler{querier: q, ops: p, mux: http.NewServeMux()}
-	h.mux.HandleFunc("/api/fleet/positions", h.handlePositions)
-	h.mux.HandleFunc("/api/vehicles/", h.handleHistory)
-	h.mux.HandleFunc("/healthz", h.handleHealthz)
-	h.mux.HandleFunc("/api/healthz", h.handleHealthz)
-	h.mux.HandleFunc("/metrics", h.handleMetrics)
-	h.mux.HandleFunc("/api/metrics", h.handleMetrics)
+}
+
+func NewHandler(q Querier, opts ...HandlerOption) http.Handler {
+	h := &Handler{querier: q, ops: defaultOps{}, mux: http.NewServeMux()}
+	for _, opt := range opts {
+		opt(h)
+	}
+	h.registerRoutes()
 	return h
 }
 
 func NewHandlerWithZoneCounter(q Querier, zc ZoneCounter, ops ...OpsProvider) http.Handler {
-	var p OpsProvider = defaultOps{}
+	var opts []HandlerOption
+	opts = append(opts, WithZoneCounter(zc))
 	if len(ops) > 0 && ops[0] != nil {
-		p = ops[0]
+		opts = append(opts, WithOps(ops[0]))
 	}
-	h := &Handler{querier: q, ops: p, zoneCounter: zc, mux: http.NewServeMux()}
+	return NewHandler(q, opts...)
+}
+
+func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/api/fleet/positions", h.handlePositions)
 	h.mux.HandleFunc("/api/vehicles/", h.handleHistory)
 	h.mux.HandleFunc("/healthz", h.handleHealthz)
 	h.mux.HandleFunc("/api/healthz", h.handleHealthz)
 	h.mux.HandleFunc("/metrics", h.handleMetrics)
 	h.mux.HandleFunc("/api/metrics", h.handleMetrics)
-	return h
 }
 
 func (h *Handler) WithZoneCounter(zc ZoneCounter) *Handler {
@@ -152,12 +163,12 @@ func validateCursor(cursor string) error {
 }
 
 type vehicleDTO struct {
-	Plate      string   `json:"plate"`
-	Lat        *float64 `json:"lat"`
-	Lon        *float64 `json:"lon"`
-	Speed      int      `json:"speed"`
+	Plate      string    `json:"plate"`
+	Lat        *float64  `json:"lat"`
+	Lon        *float64  `json:"lon"`
+	Speed      int       `json:"speed"`
 	ReceivedAt time.Time `json:"received_at"`
-	Status     string   `json:"status"`
+	Status     string    `json:"status"`
 }
 
 func toVehicleDTO(v fleet.VehiclePos) vehicleDTO {

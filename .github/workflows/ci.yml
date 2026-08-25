@@ -107,6 +107,15 @@ jobs:
         if: hashFiles('web/package.json') != ''
         with:
           node-version: '22'
+      - name: depguard web no pgx/nats/genkit
+        if: hashFiles('web/package.json') != ''
+        run: |
+          set -euo pipefail
+          if grep -R -E "from.*genkit|from.*pgx|from.*nats|import.*genkit|import.*pgx|import.*nats" web/src --include="*.ts" --include="*.tsx" --exclude="*.test.*" | grep -v "depguard.test.ts"; then
+            echo "depguard web violated: SPA must not import genkit/pgx/nats"
+            exit 1
+          fi
+          echo "depguard web ok"
       - name: build + lint
         if: hashFiles('web/package.json') != ''
         run: |

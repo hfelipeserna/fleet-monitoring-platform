@@ -104,6 +104,41 @@ services:
       retries: 10
       start_period: 10s
 
+  agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: agent
+    image: fleet-agent:local
+    command: ["/usr/local/bin/agent"]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-muse-spark-1.2-contributor}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-https://api.opencode.ai/v1}
+      GENKIT_ENV: ${GENKIT_ENV:-prod}
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleet}:${POSTGRES_PASSWORD:-fleet}@timescaledb:5432/${POSTGRES_DB:-fleet}?sslmode=disable
+      NATS_URL: nats://nats:4222
+      AGENT_PORT: 8080
+    ports:
+      - "127.0.0.1:8084:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks: [fleet]
+    restart: unless-stopped
+    logging: *default-logging
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz | grep -q status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
   web:
     build:
       context: ./web
