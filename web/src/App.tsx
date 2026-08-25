@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Map from "./map/Map";
 import { useFleetStream } from "./hooks/useFleetStream";
 import { useFleetStore } from "./store/fleetStore";
@@ -8,8 +9,11 @@ import VehicleSearch from "./features/monitoring/VehicleSearch";
 import VehicleCard from "./features/monitoring/VehicleCard";
 import ZonesList from "./features/zones/ZonesList";
 import ZoneDrawControl from "./features/zones/ZoneDrawControl";
+import CreateZoneModal from "./features/zones/CreateZoneModal";
+import EditZoneModal from "./features/zones/EditZoneModal";
 import { useZones } from "./features/zones/useZones";
 import { ZONES_PANEL_FIXED, getTabClass } from "./lib/ui";
+import type { ZoneFeature } from "./features/zones/types";
 
 function TopTabs({ activeTop, onChange }: { activeTop: ActiveTop; onChange: (v: ActiveTop) => void }) {
   return (
@@ -79,12 +83,15 @@ function MonitoringBottom({ activeBottom }: { activeBottom: string }) {
 
 export default function App() {
   const { vehicles, vehicle, selectedPlate } = useFleetStream();
-  const { zones } = useZones();
+  const { zones, refetch: refetchZones } = useZones();
   const setSelectedPlate = useFleetStore((s) => s.setSelectedPlate);
   const activeTop = usePortalStore((s) => s.activeTop);
   const activeBottom = usePortalStore((s) => s.activeBottom);
   const setActiveTop = usePortalStore((s) => s.setActiveTop);
   const draftPolygon = usePortalStore((s) => s.draftPolygon);
+  const setDraftPolygon = usePortalStore((s) => s.setDraftPolygon);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editZone, setEditZone] = useState<ZoneFeature | null>(null);
   const notFound = !!selectedPlate && vehicles.length > 0 && vehicle === null;
 
   function handleClear() {
@@ -119,8 +126,13 @@ export default function App() {
           aria-labelledby="tab-zones"
           className={activeTop !== "zones" ? "hidden" : `${ZONES_PANEL_FIXED} flex flex-col`}
         >
-          <ZonesList />
-          <button type="button" disabled={draftPolygon == null} className="mt-2 px-3 py-1 border border-black disabled:opacity-50">
+          <ZonesList onEdit={(z) => setEditZone(z)} />
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            disabled={draftPolygon == null}
+            className="mt-2 px-3 py-1 border border-black disabled:opacity-50"
+          >
             Create zone
           </button>
         </div>
@@ -138,6 +150,32 @@ export default function App() {
       >
         <MonitoringBottom activeBottom={activeBottom} />
       </div>
+
+      <CreateZoneModal
+        open={createOpen}
+        draft={draftPolygon}
+        onClose={() => {
+          setCreateOpen(false);
+          setDraftPolygon(null);
+        }}
+        onCreated={() => {
+          refetchZones();
+          setCreateOpen(false);
+        }}
+      />
+      <EditZoneModal
+        open={!!editZone}
+        zone={editZone}
+        onClose={() => setEditZone(null)}
+        onRenamed={() => {
+          refetchZones();
+          setEditZone(null);
+        }}
+        onDeleted={() => {
+          refetchZones();
+          setEditZone(null);
+        }}
+      />
     </div>
   );
 }

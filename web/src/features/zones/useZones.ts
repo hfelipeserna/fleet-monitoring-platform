@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getApiBase } from "../../lib/api";
 import type { ZonesFC } from "./types";
 
@@ -6,6 +6,9 @@ export function useZones() {
   const [zones, setZones] = useState<ZonesFC>({ type: "FeatureCollection", features: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  const refetch = useCallback(() => setTick((x) => x + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +50,7 @@ export function useZones() {
         setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [tick]);
 
-  return { zones, loading, error };
+  return { zones, loading, error, refetch };
 }

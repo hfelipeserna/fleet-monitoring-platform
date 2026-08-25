@@ -23,6 +23,7 @@ type PmCreateEvent = {
 
 export default function ZoneDrawControl({ onDraftChange }: Props) {
   const map = useMap() as PmMap;
+  const setDraftPolygon = usePortalStore((s) => s.setDraftPolygon);
 
   useEffect(() => {
     if (!map || !map.pm) return;
@@ -61,12 +62,12 @@ export default function ZoneDrawControl({ onDraftChange }: Props) {
         const result = validatePolygon(c);
         if (result.valid) draft = { type: "Polygon", coordinates: [c] };
       }
-      usePortalStore.getState().setDraftPolygon(draft);
+      setDraftPolygon(draft);
       if (onDraftChange) onDraftChange(draft);
     };
 
     const handleRemove = () => {
-      usePortalStore.getState().setDraftPolygon(null);
+      setDraftPolygon(null);
       if (onDraftChange) onDraftChange(null);
     };
 
@@ -82,7 +83,7 @@ export default function ZoneDrawControl({ onDraftChange }: Props) {
         // ignore
       }
     };
-  }, [map, onDraftChange]);
+  }, [map, onDraftChange, setDraftPolygon]);
 
   return null;
 }

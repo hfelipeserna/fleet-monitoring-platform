@@ -263,6 +263,14 @@ Por qué falla: `2× fetch` rompe contrato canónico `GET /api/zones` mapa+agent
 Refactor exigido: `useZones` hook único con `AbortController + r.ok`, `Map` solo por prop `zones`, `types.ts` centraliza `DraftPolygon/validatePolygon` pura, `isKeepAlive` + `getDedupKey` single source, `Map h-full w-full` y tokens `ZONES_PANEL_FIXED`. `98/98 pass` re-auditoría 0 medias bloqueantes (solo 3 bajas factor 2 fetch).
 Auditor: quality-auditor | frontend-auditor | architect
 
+## 2026-08-26 — Auditoría: Modales huérfanos sin wiring + dialog sin focus trap [SPEC-004 TASK-004-06]
+Severidad: alta
+Hallazgo: IA generó `CreateZoneModal` y `EditZoneModal` con `role=dialog` pero nunca montados en `App/ZonesList` (botón `Create zone` sin `onClick`, filas sin `onDoubleClick`), sin focus-trap/Esc/autofocus, `Accept` siempre habilitado sin `name.trim()`, parsing `400/409` duplicado ×3 y `name` stale al reabrir.
+Evidencia: web/src/features/zones/CreateZoneModal.tsx:6-72 + EditZoneModal.tsx:5-114 + App.tsx:123-126 pre refactor (ses_fc562f)
+Por qué falla: Feature GREEN falso (tests aislados pasan pero portal no crea/edita zonas, AC-007/009 huérfanos), WCAG 2.4.3 focus escapa al mapa/leaflet, DRY ×3 drift `details/error/message`, UX click → flash 400.
+Refactor exigido: `App` eleva `createOpen/editZone` + monta ambos modales con `onClose/onCreated/onRenamed/onDeleted → useZones refetch`, `lib/useDialogFocus` hook trap Tab/Esc + restore focus, `isAcceptDisabled=!name.trim()||!draft`, `api.ts parseZoneApiError/zoneApiUrl` DRY, `useEffect reset name/error` al abrir. `109/109 pass` re-auditoría 0 altas/medias.
+Auditor: quality-auditor | frontend-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
