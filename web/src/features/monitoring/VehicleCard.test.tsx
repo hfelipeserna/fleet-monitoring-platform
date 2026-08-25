@@ -36,7 +36,7 @@ describe("VehicleCard", () => {
     // Arrange reset store mantiene flota
     useFleetStore.setState({ selectedPlate: null } as any);
     // mock fleet store vehicles if exists (no vacia mapa)
-    (useFleetStore as any).setState({ vehicles: fleetFixture } as any);
+    (useFleetStore as any).setState({ vehicles: new Map(fleetFixture.map((v) => [v.plate, v])) } as any);
     vi.restoreAllMocks();
   });
 
@@ -166,7 +166,7 @@ describe("VehicleCard", () => {
         }),
       );
       // ensure fleetStore mantiene flota completa
-      useFleetStore.setState({ vehicles: fleetFixture } as any);
+      useFleetStore.setState({ vehicles: new Map(fleetFixture.map((v) => [v.plate, v])) } as any);
 
       // Act
       render(<VehicleCard vehicle={null} notFound={true} />);
@@ -175,10 +175,11 @@ describe("VehicleCard", () => {
       expect(screen.getByText(/placa no encontrada/i)).toBeInTheDocument(); // AC-002 BR-009
 
       // Assert — no vacia mapa: fleetStore mantiene flota (3 placas)
-      const storeState = (useFleetStore.getState() as any);
-      const vehicles = storeState.vehicles ?? fleetFixture;
-      expect(vehicles.length).toBeGreaterThan(0); // AC-002 BR-009 no vacia mapa, mantiene flota completa
-      expect(vehicles.length).toBe(3); // AC-002
+      const storeState = useFleetStore.getState() as any;
+      const vehicles = storeState.vehicles as Map<string, unknown> | unknown[];
+      const size = vehicles instanceof Map ? vehicles.size : (vehicles as unknown[]).length;
+      expect(size).toBeGreaterThan(0); // AC-002 BR-009 no vacia mapa, mantiene flota completa
+      expect(size).toBe(3); // AC-002
 
       // Assert — SSE sigue en flota completa o no cierra (no vacio)
       expect(screen.queryByText(/placa no encontrada/i)).toBeInTheDocument(); // AC-002 mensaje en espacio de info

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, GeoJSON } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -17,6 +17,7 @@ export type Vehicle = {
 export type MapProps = {
   vehicles?: Vehicle[];
   zones?: unknown;
+  selectedVehicle?: Vehicle | null;
 };
 
 const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -32,7 +33,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export default function Map({ vehicles = [], zones }: MapProps) {
+function Recenter({ vehicle }: { vehicle?: Vehicle | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (vehicle && typeof vehicle.lat === "number" && typeof vehicle.lon === "number") {
+      map.setView([vehicle.lat, vehicle.lon], 14);
+    }
+  }, [vehicle, map]);
+  return null;
+}
+
+export default function Map({ vehicles = [], zones, selectedVehicle }: MapProps) {
   const [geoJson, setGeoJson] = useState<unknown>(zones ?? null);
 
   useEffect(() => {
@@ -61,6 +72,7 @@ export default function Map({ vehicles = [], zones }: MapProps) {
       className="leaflet-container"
     >
       <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' />
+      <Recenter vehicle={selectedVehicle} />
 
       {vehicles.length > 500 ? (
         <MarkerClusterGroup chunkedLoading>

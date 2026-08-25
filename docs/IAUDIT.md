@@ -228,6 +228,16 @@ Auditor: quality-auditor | frontend-auditor | architect
 
 ## Convenciones
 
+## 2026-08-26 — Auditoría: App stub sin wiring + useFleetStream O(n) + solo onmessage [SPEC-004 TASK-004-02]
+Severidad: alta
+Hallazgo: IA generó `useFleetStream` con upsert `findIndex + [...cur]` O(n) alloc por `fleet:position`, store `fleetStore` solo `selectedPlate` y hook usaba `as unknown as {vehicles}` cast, `App.tsx` stub `Map vehicles={[]}` sin `useFleetStream/VehicleSearch/VehicleCard`, `Map.tsx` sin `useMap setView`, y `useSSE` solo `es.onmessage` sin `addEventListener('fleet:position')`.
+Evidencia: web/src/hooks/useFleetStream.ts:46-55, web/src/store/fleetStore.ts:3-6, web/src/App.tsx:8, web/src/map/Map.tsx:35, web/src/hooks/useSSE.ts:12-45 pre refactor (ses_fc6060d1)
+Por qué falla: `O(n)` copia array * 50evt/s *5k vehículos =10MB/s GC + `as unknown` rompe `tsc --noEmit` estricto + `App` falso GREEN (AC-010 no e2e) + `map.setView` ausente viola AC-001 centrado <2s + solo `onmessage` ignora `event: fleet:position` (AsyncAPI) y card nunca actualiza en prod.
+Refactor exigido: `fleetStore` formal `vehicles: Map<string,FleetPosition>` upsert O(1), `useSSE` genérico con `event` param y `onmessage + addEventListener(event)`, `useFleetStream` compone `useSSE` con `encodeURIComponent(?plate)` y `parseFleetPosition` puro, `Map.tsx` componente `Recenter useMap()` + `setView`, `App.tsx` wiring `vehicles/vehicle/Search/Card/Clear`. `npm test 77/77, build 275 modules, re-auditoría 0 altas. Commit feat(portal) TASK-004-02.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## Convenciones
+
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".

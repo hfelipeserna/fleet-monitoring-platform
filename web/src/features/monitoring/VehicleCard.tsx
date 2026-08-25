@@ -26,12 +26,18 @@ function formatTime(iso: string): string {
 }
 
 export default function VehicleCard({ vehicle, notFound }: Props) {
-  const isNotFound = notFound || vehicle == null;
-
-  if (isNotFound) {
+  if (notFound) {
     return (
       <div className="min-h-[120px]">
         <p>placa no encontrada</p>
+      </div>
+    );
+  }
+
+  if (vehicle == null) {
+    return (
+      <div className="min-h-[120px]" aria-live="polite">
+        <p className="text-sm text-gray-500">Sin datos</p>
       </div>
     );
   }
