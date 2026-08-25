@@ -5,7 +5,6 @@ import { usePlateHighlight } from "./usePlateHighlight";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import styles from "./ChatWidget.module.css";
-import "zustand";
 
 // ChatWidget uses /api/chat via VITE_API_BASE_URL and fetch("/api/chat") with AbortController
 

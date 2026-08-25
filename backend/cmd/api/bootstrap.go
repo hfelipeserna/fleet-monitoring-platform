@@ -268,7 +268,7 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 	zoneHandler := fleethttp.NewZoneHandler(zoneWrapped)
 	q := &querier{svc: svc, breaker: readBreaker, timeout: 2 * time.Second}
 	ops := &opsProvider{breaker: readBreaker, nc: nc, pool: pool}
-	handler := fleethttp.NewHandlerWithZoneCounter(q, zoneRepo, ops)
+	handler := fleethttp.NewHandler(q, fleethttp.WithZoneCounter(zoneRepo), fleethttp.WithOps(ops))
 	alertSub := fleetnatsadapter.NewAlertSubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
 	telemetrySub := fleetnatsadapter.NewTelemetrySubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
 	sseHandler := fleetsse.NewHandler(alertSub, telemetrySub)

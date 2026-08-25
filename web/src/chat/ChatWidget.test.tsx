@@ -70,10 +70,11 @@ describe("TestChatWidget", () => {
         document.querySelector('[data-testid="highlight-GTP980"]') ??
         document.querySelector('[data-plate="GTP980"]');
       // Si ChatWidget usa zustand highlight, debe existir elemento destacado o store actualizado
-      // Fallback: verificar que reply contiene placa y que ChatWidget.tsx importa zustand
+      // Fallback: verificar que reply contiene placa y que ChatWidget.tsx usa highlight via zustand transitivo
       const chatPath = path.resolve(__dirname, "ChatWidget.tsx");
       const chatSrc = fs.readFileSync(chatPath, "utf-8");
-      expect(chatSrc).toMatch(/zustand/);
+      expect(chatSrc).not.toMatch(/import\s+"zustand"/);
+      expect(chatSrc).toMatch(/usePlateHighlight|useFleetStore|highlightFromReply/);
       // si highlightEl existe, valida; si no, al menos el reply está renderizado
       if (highlightEl) {
         expect(highlightEl).toBeTruthy();

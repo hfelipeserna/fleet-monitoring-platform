@@ -19,8 +19,12 @@ var (
 	ErrValidation = errors.New("validation")
 )
 
+type DBPool interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 type Writer struct {
-	pool    *pgxpool.Pool
+	pool    DBPool
 	breaker *gobreaker.CircuitBreaker
 	mu      sync.Mutex
 	store   map[string]telemetry.TelemetryEvent // in-memory only for tests
@@ -31,12 +35,31 @@ func NewWriter(pool *pgxpool.Pool) *Writer {
 }
 
 func NewWriterWithBreaker(pool *pgxpool.Pool, cb *gobreaker.CircuitBreaker) *Writer {
+	var p DBPool
+	if pool != nil {
+		p = pool
+	}
 	w := &Writer{
-		pool:    pool,
+		pool:    p,
 		breaker: cb,
 		store:   make(map[string]telemetry.TelemetryEvent),
 	}
 	return w
+}
+
+func NewWriterWithPool(pool DBPool) *Writer {
+	return &Writer{
+		pool:  pool,
+		store: make(map[string]telemetry.TelemetryEvent),
+	}
+}
+
+func NewWriterWithPoolAndBreaker(pool DBPool, cb *gobreaker.CircuitBreaker) *Writer {
+	return &Writer{
+		pool:    pool,
+		breaker: cb,
+		store:   make(map[string]telemetry.TelemetryEvent),
+	}
 }
 
 func (w *Writer) WriteBatch(ctx context.Context, evts []telemetry.TelemetryEvent) (int64, error) {
