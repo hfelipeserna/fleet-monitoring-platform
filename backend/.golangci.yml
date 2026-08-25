@@ -105,20 +105,22 @@ linters:
               desc: "cmd/agent solo assistant + shared (ADR-0002)"
 
         # ── web: SPA nunca importa pgx/nats/genkit (BFF, ADR-0003 cond.9) ──────────
+        # Nota: depguard solo inspecciona imports Go; el enforcement real para TS está en
+        # .github/workflows/ci.yml job web/depguard (grep -R genkit|pgx|nats web/src).
         web:
-          files: ["**/web/**", "web/**"]
+          files: ["web/**/*.go"]
           deny:
             - pkg: "github.com/jackc/pgx/**"
-              desc: "web !allow pgx/nats/genkit (SPA no toca DB)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca DB) — ver CI grep"
             - pkg: "github.com/jackc/pgx"
-              desc: "web !allow pgx/nats/genkit (SPA no toca DB)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca DB) — ver CI grep"
             - pkg: "github.com/nats-io/**"
-              desc: "web !allow pgx/nats/genkit (SPA no toca NATS)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca NATS) — ver CI grep"
             - pkg: "github.com/nats-io/nats.go"
-              desc: "web !allow pgx/nats/genkit (SPA no toca NATS)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca NATS) — ver CI grep"
             - pkg: "google.golang.org/genai**"
-              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit) — ver CI grep"
             - pkg: "github.com/firebase/genkit/**"
-              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit) — ver CI grep"
             - pkg: "github.com/google/genkit/**"
-              desc: "web !allow pgx/nats/genkit (SPA no toca genkit)"
+              desc: "web !allow pgx/nats/genkit (SPA no toca genkit) — ver CI grep"

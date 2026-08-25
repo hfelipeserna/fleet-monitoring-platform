@@ -1,0 +1,10 @@
+.widget { display: flex; flex-direction: column; gap: 0.5rem; }
+.log { overflow: auto; max-height: 400px; display: flex; flex-direction: column; gap: 0.5rem; }
+.message { padding: 0.25rem 0; }
+.citations { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.citation { margin-right: 0.5rem; font-size: 0.85rem; opacity: 0.8; }
+.form { display: flex; gap: 0.5rem; }
+.input { flex: 1; padding: 0.5rem; }
+.button { padding: 0.5rem 1rem; }
+.badge { display: inline-block; padding: 0.15rem 0.4rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem; }
+.alert { color: #b91c1c; }
