@@ -30,7 +30,10 @@ export function useAlertsSSE(): FleetAlert[] {
       seenRef.current.add(key);
       setAlerts((prev) => {
         const next = [...prev, data];
-        if (next.length > MAX_ALERTS) next.shift();
+        if (next.length > MAX_ALERTS) {
+          const evicted = next.shift();
+          if (evicted) seenRef.current.delete(getDedupKey(evicted));
+        }
         return next;
       });
     },

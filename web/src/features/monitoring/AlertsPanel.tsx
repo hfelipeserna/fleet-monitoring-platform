@@ -1,5 +1,5 @@
 import { useAlertsSSE, type FleetAlert } from "../../hooks/useAlertsSSE";
-import { usePortalStore } from "../../store/portalStore";
+import { BottomPanelShell } from "./BottomPanelShell";
 
 function translate(alert: FleetAlert): string {
   const plate = alert.plate ?? "";
@@ -21,22 +21,11 @@ export type AlertsPanelProps = {
   hidden?: boolean;
 };
 
-export default function AlertsPanel({ hidden: hiddenProp }: AlertsPanelProps) {
+export default function AlertsPanel({ hidden }: AlertsPanelProps) {
   const alerts = useAlertsSSE();
-  const activeBottom = usePortalStore((s) => s.activeBottom);
-  const hidden = hiddenProp !== undefined ? hiddenProp : activeBottom !== "alerts";
 
   return (
-    <div
-      data-testid="alerts-panel"
-      className="h-[280px] lg:h-[340px] overflow-y-auto"
-      role="log"
-      aria-live="polite"
-      aria-relevant="additions"
-      aria-hidden={hidden ? "true" : undefined}
-      hidden={hidden ? true : undefined}
-      style={hidden ? { display: "none" } : undefined}
-    >
+    <BottomPanelShell activeKey="alerts" testId="alerts-panel" asLog hidden={hidden}>
       {alerts.length === 0 ? (
         <p className="p-2 text-sm text-gray-500">Sin alertas</p>
       ) : (
@@ -61,6 +50,6 @@ export default function AlertsPanel({ hidden: hiddenProp }: AlertsPanelProps) {
           ))}
         </ul>
       )}
-    </div>
+    </BottomPanelShell>
   );
 }

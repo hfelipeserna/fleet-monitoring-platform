@@ -247,6 +247,14 @@ Refactor exigido: Extraído `lib/alert.ts` `getDedupKey/isValidAlert/isKeepAlive
 Auditor: quality-auditor | frontend-auditor | architect
 
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
+## 2026-08-26 — Auditoría: Chat useChatApi race leak + BottomPanelShell DRY [SPEC-004 TASK-004-03b]
+Severidad: alta
+Hallazgo: IA generó `chat/useChatApi` con `AbortController + setTimeout 15s` sobrescribiendo `abortRef/timeoutRef` sin abortar/clear previo, `loading` toggle cruzado y `BottomPanelShell` duplicado: `ChatTab` y `AlertsPanel` copiaban `h-[280px] + role=log` y `App` montaba `ChatWidget` suelto fuera del panel fijo, doble `role=log` y doble scroll `h-[280px] + .log max-height 400px`.
+Evidencia: web/src/chat/useChatApi.ts:24-27 pre refactor, web/src/features/monitoring/ChatTab.tsx:10-20 y AlertsPanel.tsx:24-39 duplicado, web/src/App.tsx:44 <ChatWidget/> suelto (ses_fc5c3d22)
+Por qué falla: `2º sendMessage` overwrites `abortRef`/`timeoutRef` → `finally` de 1ª limpia timeout de 2ª (leak) y `loading` queda idle con request pending; `11 req/min` BR-011 reproduce 100%. DRY shell obliga 2 edits para cambiar `lg:h-[340px]`; doble `role=log` anuncia form 2 veces y doble scroll rompe `overflow-y-auto`.
+Refactor exigido: `useChatApi` guarda `prevCtrl/prevT` y abort/clear antes de re-asignar, `if(loading) return` + cleanup condicional `if(current===id)`, helpers `buildRequest/fetchWithFallbackSignal/mapStatusToError` CC<5; `BottomPanelShell` centraliza `h-[280px] lg:h-[340px] overflow-y-auto flex flex-col` + `portalStore` hidden, `ChatTab/AlertsPanel` lo usan, `App` reemplaza Widget suelto por `ChatTab`, `role=log` solo en `MessageList`, `.log flex:1`. `87/87 pass` re-auditoría 0 altas.
+Auditor: quality-auditor | frontend-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
