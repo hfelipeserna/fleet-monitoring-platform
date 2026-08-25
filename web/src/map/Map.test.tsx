@@ -115,17 +115,16 @@ describe("Map", () => {
   });
 
   it("GeoJSON overlay rojo fillOpacity 0.2", async () => {
-    // Arrange
-    // ensure fetch for zones will be called by Map
+    // Arrange — Map recibe zones por prop vía useZones (BR-004 única fuente), no fetch duplicado
     fetchSpy.mockClear();
 
     // Act
     render(<Map vehicles={buildVehicles(5)} zones={zonesFixture} />);
 
-    // Assert — fetch /api/zones called and GeoJSON rendered with style red 0.2
+    // Assert — GeoJSON rendered with style red 0.2 (prop, no fetch requerido)
     await waitFor(() => {
-      const zoneCalls = fetchSpy.mock.calls.filter(([arg]: any) => String(arg).includes("/api/zones"));
-      expect(zoneCalls.length).toBeGreaterThan(0); // AC-007 GET /api/zones
+      const geoCheck = document.querySelectorAll("path.leaflet-interactive, .leaflet-overlay-pane path");
+      expect(geoCheck.length).toBeGreaterThan(0);
     });
 
     // GeoJSON overlay must be rojo with fillOpacity 0.2

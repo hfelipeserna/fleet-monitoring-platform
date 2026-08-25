@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
-import { getApiBase } from "../lib/api";
+import type { ZonesFC } from "../features/zones/types";
 
 export type Vehicle = {
   plate: string;
@@ -16,8 +16,9 @@ export type Vehicle = {
 
 export type MapProps = {
   vehicles?: Vehicle[];
-  zones?: unknown;
+  zones?: ZonesFC | null;
   selectedVehicle?: Vehicle | null;
+  children?: React.ReactNode;
 };
 
 const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -43,37 +44,17 @@ function Recenter({ vehicle }: { vehicle?: Vehicle | null }) {
   return null;
 }
 
-export default function Map({ vehicles = [], zones, selectedVehicle }: MapProps) {
-  const [geoJson, setGeoJson] = useState<unknown>(zones ?? null);
-
-  useEffect(() => {
-    if (zones) setGeoJson(zones);
-  }, [zones]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const base = getApiBase();
-    const url = base ? `${base}/api/zones` : "/api/zones";
-    fetch(url, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!zones) setGeoJson(data);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [zones]);
-
+export default function Map({ vehicles = [], zones, selectedVehicle, children }: MapProps) {
   return (
     <MapContainer
       center={[4.71, -74.07]}
       zoom={12}
-      style={{ height: "100vh", width: "100%" }}
+      className="leaflet-container h-full w-full"
       data-testid="map"
-      className="leaflet-container"
     >
       <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' />
       <Recenter vehicle={selectedVehicle} />
-
+      {children}
       {vehicles.length > 500 ? (
         <MarkerClusterGroup chunkedLoading>
           {vehicles.map((v) => (
@@ -85,9 +66,8 @@ export default function Map({ vehicles = [], zones, selectedVehicle }: MapProps)
           <Marker key={v.plate} position={[v.lat, v.lon]} title={v.plate} alt={`vehicle ${v.plate}`} />
         ))
       )}
-
-      {geoJson ? (
-        <GeoJSON data={geoJson as never} style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })} />
+      {zones ? (
+        <GeoJSON data={zones as never} style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })} />
       ) : null}
     </MapContainer>
   );

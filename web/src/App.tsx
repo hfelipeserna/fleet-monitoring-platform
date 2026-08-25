@@ -7,7 +7,9 @@ import ChatTab from "./features/monitoring/ChatTab";
 import VehicleSearch from "./features/monitoring/VehicleSearch";
 import VehicleCard from "./features/monitoring/VehicleCard";
 import ZonesList from "./features/zones/ZonesList";
-import { PANEL_HEIGHT, getTabClass } from "./lib/ui";
+import ZoneDrawControl from "./features/zones/ZoneDrawControl";
+import { useZones } from "./features/zones/useZones";
+import { ZONES_PANEL_FIXED, getTabClass } from "./lib/ui";
 
 function TopTabs({ activeTop, onChange }: { activeTop: ActiveTop; onChange: (v: ActiveTop) => void }) {
   return (
@@ -77,10 +79,12 @@ function MonitoringBottom({ activeBottom }: { activeBottom: string }) {
 
 export default function App() {
   const { vehicles, vehicle, selectedPlate } = useFleetStream();
+  const { zones } = useZones();
   const setSelectedPlate = useFleetStore((s) => s.setSelectedPlate);
   const activeTop = usePortalStore((s) => s.activeTop);
   const activeBottom = usePortalStore((s) => s.activeBottom);
   const setActiveTop = usePortalStore((s) => s.setActiveTop);
+  const draftPolygon = usePortalStore((s) => s.draftPolygon);
   const notFound = !!selectedPlate && vehicles.length > 0 && vehicle === null;
 
   function handleClear() {
@@ -113,15 +117,17 @@ export default function App() {
           id="panel-zones"
           role="tabpanel"
           aria-labelledby="tab-zones"
-          className={activeTop !== "zones" ? "hidden" : `${PANEL_HEIGHT} flex flex-col`}
+          className={activeTop !== "zones" ? "hidden" : `${ZONES_PANEL_FIXED} flex flex-col`}
         >
           <ZonesList />
-          <button type="button" className="mt-2 px-3 py-1 border border-black">
+          <button type="button" disabled={draftPolygon == null} className="mt-2 px-3 py-1 border border-black disabled:opacity-50">
             Create zone
           </button>
         </div>
         <div className="flex-1 relative min-h-[300px]">
-          <Map vehicles={vehicles} selectedVehicle={vehicle} />
+          <Map vehicles={vehicles} selectedVehicle={vehicle} zones={zones}>
+            {activeTop === "zones" ? <ZoneDrawControl /> : null}
+          </Map>
         </div>
       </div>
 

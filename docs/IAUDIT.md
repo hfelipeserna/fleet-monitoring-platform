@@ -255,6 +255,14 @@ Por qué falla: `2º sendMessage` overwrites `abortRef`/`timeoutRef` → `finall
 Refactor exigido: `useChatApi` guarda `prevCtrl/prevT` y abort/clear antes de re-asignar, `if(loading) return` + cleanup condicional `if(current===id)`, helpers `buildRequest/fetchWithFallbackSignal/mapStatusToError` CC<5; `BottomPanelShell` centraliza `h-[280px] lg:h-[340px] overflow-y-auto flex flex-col` + `portalStore` hidden, `ChatTab/AlertsPanel` lo usan, `App` reemplaza Widget suelto por `ChatTab`, `role=log` solo en `MessageList`, `.log flex:1`. `87/87 pass` re-auditoría 0 altas.
 Auditor: quality-auditor | frontend-auditor | architect
 
+## 2026-08-26 — Auditoría: Zones fetch duplicado + JSON.stringify + 100vh [SPEC-004 TASK-004-05]
+Severidad: media
+Hallazgo: IA generó `ZonesList` y `Map` con `fetch GET /api/zones` duplicado (BR-004 única fuente rota, 2× p95 200ms + race setGeoJson), `ZoneDrawControl` con `JSON.stringify(first) !== JSON.stringify(last)` O(k) alloc frágil a `1 vs 1.0`, doble escritura `store + onDraftChange` y `catch(()=>undefined)` traga Abort/400, tipos `DraftPolygon` triplicados con `unknown` y `Map 100vh` overflow.
+Evidencia: web/src/features/zones/ZonesList.tsx:19-32 + web/src/map/Map.tsx:54-65, ZoneDrawControl.tsx:61-67, store/portalStore.ts:9 pre refactor (ses_fc580)
+Por qué falla: `2× fetch` rompe contrato canónico `GET /api/zones` mapa+agente, `JSON.stringify` falla con EPSG:4326 tolerancia y `O(k)` alloc, `as unknown` anula `tsc`, `100vh` + header desborda grid y doble `data-testid zones-list`.
+Refactor exigido: `useZones` hook único con `AbortController + r.ok`, `Map` solo por prop `zones`, `types.ts` centraliza `DraftPolygon/validatePolygon` pura, `isKeepAlive` + `getDedupKey` single source, `Map h-full w-full` y tokens `ZONES_PANEL_FIXED`. `98/98 pass` re-auditoría 0 medias bloqueantes (solo 3 bajas factor 2 fetch).
+Auditor: quality-auditor | frontend-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
