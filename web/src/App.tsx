@@ -16,8 +16,28 @@ import { ZONES_PANEL_FIXED, getTabClass } from "./lib/ui";
 import type { ZoneFeature } from "./features/zones/types";
 
 function TopTabs({ activeTop, onChange }: { activeTop: ActiveTop; onChange: (v: ActiveTop) => void }) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const idx = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      const next = idx >= 0 ? (idx + 1) % tabs.length : 0;
+      tabs[next]?.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prev = idx >= 0 ? (idx - 1 + tabs.length) % tabs.length : tabs.length - 1;
+      tabs[prev]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      tabs[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      tabs[tabs.length - 1]?.focus();
+    }
+  }
+
   return (
-    <div role="tablist" aria-label="Vistas principales" className="flex gap-2 mt-2">
+    <div role="tablist" aria-label="Vistas principales" className="flex gap-2 mt-2" onKeyDown={handleKeyDown}>
       <button
         type="button"
         role="tab"
