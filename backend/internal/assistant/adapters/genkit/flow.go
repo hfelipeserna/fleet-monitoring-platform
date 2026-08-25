@@ -3,10 +3,14 @@ package genkit
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/firebase/genkit/go/ai"
+	"github.com/firebase/genkit/go/genkit"
 	"github.com/sony/gobreaker"
 
 	"fleetmonitoring/backend/internal/assistant/application"
@@ -16,7 +20,7 @@ import (
 )
 
 const (
-	FlowTimeout     = 15 * time.Second
+	FlowTimeout     = 30 * time.Second
 	MaxOutputTokens = 1024
 	SemaphoreCap    = 20
 )
@@ -57,6 +61,10 @@ type AssistantFlow struct {
 	breaker  *gobreaker.CircuitBreaker
 	semCount atomic.Int32
 	registry map[string]ToolHandler
+	g        *genkit.Genkit
+	model    string
+	tools    []ai.ToolRef
+	toolsMu  sync.Mutex
 }
 
 func NewAssistantFlow(q application.FleetQuerier, client *StubGeminiClient) *AssistantFlow {
@@ -77,6 +85,7 @@ func (f *AssistantFlow) initRegistry() {
 		ToolFleetSummary:  f.handleFleetSummary,
 		ToolVehicleStatus: f.handleVehicleStatus,
 		ToolActiveAlerts:  f.handleActiveAlerts,
+		ToolListPlates:    f.handleListPlates,
 	}
 }
 
@@ -266,6 +275,18 @@ func (f *AssistantFlow) handleActiveAlerts(ctx context.Context, args map[string]
 	return reply, Citation{Tool: ToolActiveAlerts, Count: len(alerts)}, nil
 }
 
+func (f *AssistantFlow) handleListPlates(ctx context.Context, args map[string]any) (string, Citation, error) {
+	plates, err := f.querier.ListPlates(ctx)
+	if err != nil {
+		return "", Citation{}, fmt.Errorf("list plates failed: %w", err)
+	}
+	if len(plates) == 0 {
+		return FilterOutput("No hay placas registradas en la base de datos."), Citation{Tool: ToolListPlates, Count: 0}, nil
+	}
+	reply := FilterOutput("Placas registradas: " + strings.Join(plates, ", "))
+	return reply, Citation{Tool: ToolListPlates, Count: len(plates)}, nil
+}
+
 func (f *AssistantFlow) dispatch(ctx context.Context, tc *ToolCall) (string, Citation, error) {
 	h, ok := f.registry[tc.Name]
 	if !ok {
@@ -287,6 +308,14 @@ func (f *AssistantFlow) dispatch(ctx context.Context, tc *ToolCall) (string, Cit
 	return out, cit, hErr
 }
 
+func (f *AssistantFlow) SetGenkit(g *genkit.Genkit, model string) {
+	f.toolsMu.Lock()
+	defer f.toolsMu.Unlock()
+	f.g = g
+	f.model = model
+	f.tools = nil
+}
+
 func (f *AssistantFlow) Chat(ctx context.Context, input ChatInput) (ChatOutput, error) {
 	if err := shared.ValidateMessage(input.Message); err != nil {
 		return ChatOutput{}, fmt.Errorf("chat validation: %w", err)
@@ -302,6 +331,19 @@ func (f *AssistantFlow) Chat(ctx context.Context, input ChatInput) (ChatOutput, 
 	} else if empty {
 		return ChatOutput{Reply: FilterOutput("Respuesta operativa: sin datos adicionales solicitados.")}, nil
 	}
+	if f.g != nil {
+		if v := os.Getenv("GEMINI_API_KEY"); v == "" {
+			return ChatOutput{}, fmt.Errorf("503 service unavailable: GEMINI_API_KEY missing: %w", shared.ErrValidation)
+		}
+		out, err := f.chatWithGenkit(timeoutCtx, input)
+		if err == nil {
+			return out, nil
+		}
+		if strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "UNAVAILABLE") || strings.Contains(err.Error(), "high demand") || strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "deadline") || strings.Contains(err.Error(), "NOT_FOUND") || strings.Contains(err.Error(), "context deadline") || strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") {
+			return ChatOutput{}, fmt.Errorf("503 service unavailable: modelo Gemini temporalmente no disponible o saturado, intente más tarde: %w", err)
+		}
+		return ChatOutput{}, err
+	}
 	tc := f.resolveToolCall(input)
 	if tc == nil {
 		return ChatOutput{Reply: FilterOutput("Respuesta operativa: no se requirió tool adicional.")}, nil
@@ -314,6 +356,13 @@ func (f *AssistantFlow) Chat(ctx context.Context, input ChatInput) (ChatOutput, 
 		return ChatOutput{Reply: out}, nil
 	}
 	return ChatOutput{Reply: out, Citations: []Citation{cit}}, nil
+}
+
+func (f *AssistantFlow) listPlates(ctx context.Context) ([]string, error) {
+	if f.querier == nil {
+		return nil, fmt.Errorf("querier not set: %w", shared.ErrValidation)
+	}
+	return f.querier.ListPlates(ctx)
 }
 
 func buildStoppedReply(rows []domain.StoppedVehicle) string {

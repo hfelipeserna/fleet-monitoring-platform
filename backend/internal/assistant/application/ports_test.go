@@ -82,7 +82,7 @@ func TestFleetQuerier_InterfaceExists(t *testing.T) {
 	})
 
 	t.Run("methods are read-only no write signature", func(t *testing.T) {
-		// Covers [SPEC-003: BR-002, FR-009] — firewall read-only, 4 tools only
+		// Covers [SPEC-003: BR-002, FR-009] — firewall read-only, 5 tools (incl ListPlates for placas)
 		// Arrange
 		typ := reflect.TypeFor[application.FleetQuerier]()
 
@@ -90,8 +90,8 @@ func TestFleetQuerier_InterfaceExists(t *testing.T) {
 		numMethods := typ.NumMethod()
 
 		// Assert
-		if numMethods != 4 {
-			t.Fatalf("expected exactly 4 methods on FleetQuerier (read-only firewall), got %d", numMethods)
+		if numMethods != 5 {
+			t.Fatalf("expected exactly 5 methods on FleetQuerier (read-only firewall), got %d", numMethods)
 		}
 	})
 

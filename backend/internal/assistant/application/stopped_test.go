@@ -41,6 +41,10 @@ func (m *mockQuerier) GetActiveAlerts(ctx context.Context, limit int) ([]applica
 	return nil, nil
 }
 
+func (m *mockQuerier) ListPlates(ctx context.Context) ([]string, error) {
+	return []string{"ABC123"}, nil
+}
+
 // Covers [SPEC-003: AC-001, BR-001]
 func TestFindStopped_27m_returns_2(t *testing.T) {
 	t.Run("returns 2 vehicles stopped >20m in critical zone", func(t *testing.T) {

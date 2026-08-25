@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -272,7 +274,16 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 	alertSub := fleetnatsadapter.NewAlertSubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
 	telemetrySub := fleetnatsadapter.NewTelemetrySubscriberWithBreaker(js, alertPublishBreaker, 2*time.Second)
 	sseHandler := fleetsse.NewHandler(alertSub, telemetrySub)
+	agentClient := &httpAgentClient{
+		baseURL: fmt.Sprintf("http://%s", getEnv("AGENT_URL", "agent:8080")),
+		client:  &http.Client{Timeout: 15 * time.Second},
+	}
+	chatHandler := fleethttp.NewChatHandler(agentClient)
 	combined := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chat" {
+			chatHandler.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/api/alerts" || r.URL.Path == "/api/fleet/positions/stream" {
 			sseHandler.ServeHTTP(w, r)
 			return
@@ -286,4 +297,43 @@ func Bootstrap(ctx context.Context) (*Server, error) {
 	addr := ":" + apiPort
 	srv := NewServer(combined, addr, nc, pool)
 	return srv, nil
+}
+
+func getEnv(k, def string) string {
+	if v := fleetenv.Get(k, ""); v != "" {
+		return v
+	}
+	return def
+}
+
+type httpAgentClient struct {
+	baseURL string
+	client  *http.Client
+}
+
+func (c *httpAgentClient) Chat(ctx context.Context, message string) (fleethttp.ChatResponse, error) {
+	body, _ := json.Marshal(map[string]string{"message": message})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return fleethttp.ChatResponse{}, fmt.Errorf("agent request failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if id, ok := shared.RequestIDFromCtx(ctx); ok && id != "" {
+		req.Header.Set("X-Request-ID", id)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fleethttp.ChatResponse{}, fmt.Errorf("agent do failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		var e map[string]string
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return fleethttp.ChatResponse{}, fmt.Errorf("agent %d: %v", resp.StatusCode, e)
+	}
+	var out fleethttp.ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fleethttp.ChatResponse{}, fmt.Errorf("agent decode: %w", err)
+	}
+	return out, nil
 }

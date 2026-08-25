@@ -78,6 +78,10 @@ func (f *extFakeQuerier) GetActiveAlerts(ctx context.Context, limit int) ([]appl
 	return []application.Alert{}, nil
 }
 
+func (f *extFakeQuerier) ListPlates(ctx context.Context) ([]string, error) {
+	return []string{"ABC123"}, nil
+}
+
 var _ application.FleetQuerier = (*extFakeQuerier)(nil)
 
 // Covers [SPEC-003: AC-003, AC-004, BR-002, BR-005]

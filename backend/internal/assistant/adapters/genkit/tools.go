@@ -14,6 +14,7 @@ const (
 	ToolFleetSummary = "getFleetSummary"
 	ToolVehicleStatus = "getVehicleStatus"
 	ToolActiveAlerts = "getActiveAlerts"
+	ToolListPlates   = "listPlates"
 )
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, Citation, error)
@@ -23,4 +24,5 @@ var DefineTools = []Tool{
 	{Name: ToolFleetSummary, Schema: `{"type":"object","properties":{}}`},
 	{Name: ToolVehicleStatus, Schema: `{"type":"object","properties":{"plate":{"type":"string"}}}`},
 	{Name: ToolActiveAlerts, Schema: `{"type":"object","properties":{"limit":{"type":"integer"}}}`},
+	{Name: ToolListPlates, Schema: `{"type":"object","properties":{}}`},
 }

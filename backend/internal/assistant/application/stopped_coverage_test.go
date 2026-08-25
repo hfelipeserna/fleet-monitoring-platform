@@ -57,6 +57,10 @@ func (c *controllableQuerier) GetActiveAlerts(ctx context.Context, limit int) ([
 	return nil, nil
 }
 
+func (c *controllableQuerier) ListPlates(ctx context.Context) ([]string, error) {
+	return []string{"ABC123"}, nil
+}
+
 var _ application.FleetQuerier = (*controllableQuerier)(nil)
 
 func strPtr2(s string) *string { return &s }

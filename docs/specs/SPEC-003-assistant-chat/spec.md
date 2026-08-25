@@ -69,7 +69,7 @@ El operador debe resolver preguntas operativas sin construir filtros manuales: *
   - 2b. Rate 10/min excedido → `429 Retry-After:6` (distinto de 503) sin llamar a LLM
   - 3a. `GEMINI_API_KEY` ausente → `503 {error:"agent unavailable"}` con breaker open, no expone razón interna
   - 4a. Tool recibe `zoneId` inexistente o `plate` inválida → tool valida en código y retorna `400` interno que el flow traduce a “no encontré esa zona/placa”
-  - 5a. Gemini timeout 15s / breaker open / `maxOutputTokens` excedido → `503` o `200` con fallback “agente temporalmente no disponible, intente de nuevo” (never stack)
+  - 5a. Gemini timeout 30s / breaker open / `maxOutputTokens` excedido / `404 NOT_FOUND` / `503 high demand` → `503 {error:"modelo temporalmente no disponible o saturado, intente más tarde"}` con `Retry-After:30`, nunca fallback local con datos no solicitados (evita respuestas sin sentido como listar placas cuando se preguntan coordenadas)
   - 6a. Output contiene secreto/token/SQL → filtro post-LLM lo elimina y responde degradado
 - **Postconditions**: Operador recibe respuesta trazable a tools (citations) y puede contrastarla con `GET /api/zones` y `GET /api/fleet/positions` (misma fuente)
 - **Business Rules**: BR-001, BR-002, BR-003, BR-004, BR-005, BR-006
@@ -137,6 +137,7 @@ El operador debe resolver preguntas operativas sin construir filtros manuales: *
 | BR-008 | Aislamiento BFF: `web` nunca accede a DB/NATS/Genkit/GEMINI_API_KEY ni conoce prompts/tools/SQL; `cmd/api` es única superficie pública y valida JWT/rate/timeout/breaker y filtra salida; `cmd/agent` valida scope y minimiza (cond. 9 ADR-0003) | UC-002, FR-001/009 |
 | BR-009 | Validación estricta de input: `message` 1..4000 chars UTF-8, `plate ^[A-Z]{3}[0-9]{3}$`, `zoneId` UUID v4, `limit 1..20`, `minMinutes 1..1440`; tool rechaza IDs no allowlisted; errores mapean a `400` sin stack | UC-001/002, FR-003 |
 | BR-010 | Idempotencia de lectura: tools son idempotentes y cacheables por `request_id`; reintento del cliente con mismo `message` no duplica efectos (read-only); `Nats-Msg-Id` de telemetría no aplica al chat, pero dedup de alertas (SPEC-002) se reutiliza si `getActiveAlerts` lee `ALERTS` | UC-001, FR-003 |
+| BR-011 | Sin fallback con alucinación: si el modelo Gemini no puede responder (`404`, `503`, `deadline`, `UNAVAILABLE`), el agente no inventa ni mapea a otra tool no solicitada; retorna `503` con mensaje explícito “modelo temporalmente no disponible o saturado, intente más tarde” y `Retry-After:30`, nunca lista placas cuando se piden coordenadas | UC-001, FR-006 |
 
 ## 7. Main Flows
 
@@ -174,7 +175,7 @@ flowchart TD
 - `zoneId` no allowlisted para JWT → `403` interno del tool → flow “no tienes acceso a esa zona” (BR-002)
 - `GEMINI_API_KEY` ausente o vacía en `cmd/agent` → `503 {error:"agent unavailable", retryAfter:30}` con breaker open, sin leak de env (FR-007)
 - Rate 11 req/60s por IP → `429 Retry-After:6` sin invocar LLM (BR-005, coherente con free tier 10 RPM)
-- Gemini timeout >15s / `maxOutputTokens` excedido / breaker open (50% 30s) → ctx cancel a tools/pgx, breaker `open`, response `503` o `200` fallback “agente temporalmente no disponible” + métrica `agent_timeout_total` (FR-006)
+- Gemini timeout >30s / `maxOutputTokens` excedido / breaker open (50% 30s) / `404 NOT_FOUND` modelo no disponible para la key / `503 high demand` → ctx cancel a tools/pgx, breaker `open`, response `503 {error:"modelo temporalmente no disponible o saturado"}` + métrica `agent_timeout_total` y `Retry-After:30`, nunca fallback heurístico que inventa datos (ej. listar placas cuando se piden coordenadas) (FR-006, BR-011)
 - Output con `sk-...`, `GEMINI_API_KEY`, `BEGIN; DROP`, `SELECT *` → output filter lo elimina antes de `200` (BR-003)
 - Sin datos: `ST_Within` devuelve `[]` → LLM responde “ningún vehículo detenido >20m en zonas críticas en este momento” con `citations: [{tool:"findVehiclesStoppedInCriticalZones", count:0}]` (UC-001 4c)
 - `GET /api/zones` y `findVehiclesStoppedInCriticalZones` divergen → prohibido por BR-001; ambos leen `critical_zones` canónica

@@ -43,4 +43,5 @@ type FleetQuerier interface {
 	GetFleetSummary(ctx context.Context) (FleetSummary, error)
 	GetVehicleStatus(ctx context.Context, plate shared.Plate) (VehicleStatus, error)
 	GetActiveAlerts(ctx context.Context, limit int) ([]Alert, error)
+	ListPlates(ctx context.Context) ([]string, error)
 }

@@ -56,6 +56,10 @@ func (f *fakeFleetQuerier) GetActiveAlerts(ctx context.Context, limit int) ([]ap
 	return nil, nil
 }
 
+func (f *fakeFleetQuerier) ListPlates(ctx context.Context) ([]string, error) {
+	return []string{"ABC123", "XYZ789"}, nil
+}
+
 var _ application.FleetQuerier = (*fakeFleetQuerier)(nil)
 
 // Covers [SPEC-003: FR-002, FR-003, BR-002]
@@ -166,18 +170,18 @@ func TestFlow_MaxOutputTokens_1024_cap(t *testing.T) {
 
 func TestFlow_Timeout_15s(t *testing.T) {
 	// Covers [SPEC-003: AC-004, BR-005, FR-001, FR-006]
-	t.Run("respects 15s timeout and cancels slow Gemini call", func(t *testing.T) {
+	t.Run("respects 30s timeout and cancels slow Gemini call", func(t *testing.T) {
 		// Arrange
 		q := &fakeFleetQuerier{}
 		delayedGemini := &genkit.StubGeminiClient{
-			Delay: 16 * time.Second,
+			Delay: 31 * time.Second,
 		}
 		flow := genkit.NewAssistantFlow(q, delayedGemini)
 		timeout := genkit.FlowTimeout
 
 		// Act
-		if timeout != 15*time.Second {
-			t.Fatalf("expected FlowTimeout 15s, got %v", timeout)
+		if timeout != 30*time.Second {
+			t.Fatalf("expected FlowTimeout 30s, got %v", timeout)
 		}
 		ctx := context.Background()
 		start := time.Now()
@@ -191,11 +195,11 @@ func TestFlow_Timeout_15s(t *testing.T) {
 		if !strings.Contains(err.Error(), "deadline") && !strings.Contains(strings.ToLower(err.Error()), "timeout") {
 			t.Fatalf("expected deadline/timeout error, got %v", err)
 		}
-		if elapsed > 16*time.Second {
-			t.Fatalf("expected flow to timeout near 15s, elapsed %v", elapsed)
+		if elapsed > 31*time.Second {
+			t.Fatalf("expected flow to timeout near 30s, elapsed %v", elapsed)
 		}
-		if elapsed < 14*time.Second {
-			t.Fatalf("expected flow to wait close to 15s before timeout, elapsed %v", elapsed)
+		if elapsed < 29*time.Second {
+			t.Fatalf("expected flow to wait close to 30s before timeout, elapsed %v", elapsed)
 		}
 	})
 }

@@ -114,6 +114,9 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-muse-spark-1.2-contributor}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-https://api.opencode.ai/v1}
       GENKIT_ENV: ${GENKIT_ENV:-prod}
       DATABASE_URL: postgres://${POSTGRES_USER:-fleet}:${POSTGRES_PASSWORD:-fleet}@timescaledb:5432/${POSTGRES_DB:-fleet}?sslmode=disable
       NATS_URL: nats://nats:4222
