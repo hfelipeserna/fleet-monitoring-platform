@@ -103,10 +103,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        if: hashFiles('web/package.json') != ''
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         if: hashFiles('web/package.json') != ''
         with:
           node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: 'web/pnpm-lock.yaml'
       - name: depguard web no pgx/nats/genkit
         if: hashFiles('web/package.json') != ''
         run: |
@@ -120,9 +126,9 @@ jobs:
         if: hashFiles('web/package.json') != ''
         run: |
           set -euo pipefail
-          npm ci --prefix web
-          npm run lint --prefix web
-          npm run build --prefix web
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web run lint
+          pnpm --dir web run build
 
   mobile:
     name: mobile (typecheck + lint)

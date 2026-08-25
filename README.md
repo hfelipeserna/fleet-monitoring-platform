@@ -29,8 +29,9 @@ Plataforma *event-driven* para flotas: **ingesta telemetría** (Go + NATS JetStr
 |---|---|---|
 | **Docker + Compose v2** | `≥24` | `docker compose version` |
 | **Go** | `1.25` | Solo para `go test`/`go vet` local |
-| **Node** | `≥20` | Solo para `web` (`npm test`/`build`) y `newman` |
-| **Postman** | Desktop o `newman` | `npm i -g newman` para CLI |
+| **Node** | `≥20` | Solo para `web` (`pnpm test`/`build`) y `newman` |
+| **pnpm** | `≥9` | `corepack enable && pnpm install --frozen-lockfile` en `web` |
+| **Postman** | Desktop o `newman` | `pnpm dlx newman run ...` o `npm i -g newman` |
 | **colima** (macOS) | — | `colima start --cpu 4 --memory 8 --arch x86_64` si usas colima (máquina 16 GB) |
 
 > **RAM:** core `6-9 GB` idle, con `--profile observability` `+2 GB`. Deja 4-6 GB libres.
@@ -232,9 +233,8 @@ Abre `http://localhost:5173` → `MapContainer` con `TileLayer https://{s}.tile.
 ### 5.3 CLI sin Postman Desktop (CI)
 
 ```bash
-npm i -g newman
-newman run infra/postman/Fleet.postman_collection.json --env-var baseUrl=http://localhost:8080 --reporters cli
-newman run infra/postman/Fleet.read.postman_collection.json --env-var baseUrl=http://localhost:8080 --reporters cli
+pnpm dlx newman run infra/postman/Fleet.postman_collection.json --env-var baseUrl=http://localhost:8080 --reporters cli
+pnpm dlx newman run infra/postman/Fleet.read.postman_collection.json --env-var baseUrl=http://localhost:8080 --reporters cli
 # ambos → 0 failed
 
 # Chat sin Postman:
@@ -276,11 +276,11 @@ Contratos machine-readable: `docs/specs/SPEC-001-telemetry-ingest/contracts/http
 
 ```bash
 cd web
-npm ci
-npm test -- --run          # 16 tests (ChatWidget, Map, useSSE, depguard)
-npm test -- --coverage     # All files 94.9% (threshold 60)
-npm run lint               # tsc --noEmit
-npm run build              # vite build → dist/
+pnpm install --frozen-lockfile
+pnpm test -- --run          # 124 tests (VehicleCard, AlertsPanel, ChatTab, Map, useSSE, depguard)
+pnpm test -- --coverage     # All files 90%+ (threshold 60)
+pnpm run lint               # tsc --noEmit
+pnpm run build              # vite build → dist/
 ```
 
 Abrir `http://localhost:5173` → probar:
@@ -306,8 +306,8 @@ go test -run TestPlate ./internal/shared/domain -v
 go test -run TestChatBFF ./internal/fleet/adapters/http -v  # 11 req/min →429
 
 # Web
-cd web && npm test -- --run && npm run build
-cd web && npm test -- --coverage --run  # 94.9% Stmts
+cd web && pnpm test -- --run && pnpm run build
+cd web && pnpm test -- --coverage --run  # 90%+ Stmts
 
 # Lint clean architecture
 golangci-lint run ./...               # backend/.golangci.yml depguard OK 113 archivos
