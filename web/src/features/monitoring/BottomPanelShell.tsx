@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { ActiveBottom, usePortalStore } from "../../store/portalStore";
+import { PANEL_FIXED } from "../../lib/ui";
 
 export type BottomPanelShellProps = {
   activeKey: ActiveBottom;
@@ -15,7 +16,7 @@ export function BottomPanelShell({ activeKey, testId, children, asLog, hidden: h
   return (
     <div
       data-testid={testId}
-      className="h-[280px] lg:h-[340px] overflow-y-auto flex flex-col"
+      className={`${PANEL_FIXED} flex flex-col`}
       role={asLog ? "log" : undefined}
       aria-live={asLog ? "polite" : undefined}
       aria-relevant={asLog ? "additions" : undefined}
