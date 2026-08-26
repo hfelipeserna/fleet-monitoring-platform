@@ -36,11 +36,16 @@ type Msg interface {
 	Delivered() int
 }
 
+type AlertProcessor interface {
+	Process(ctx context.Context, plate string, lat, lon *float64, speed int) error
+}
+
 type Consumer struct {
-	writer TelemetryWriter
-	js     JetStreamPublisher
-	opts   ConsumerOptions
-	clock  Clock
+	writer         TelemetryWriter
+	js             JetStreamPublisher
+	opts           ConsumerOptions
+	clock          Clock
+	alertProcessor AlertProcessor
 }
 
 func NewConsumer(writer TelemetryWriter, js JetStreamPublisher, opts ConsumerOptions) *Consumer {
@@ -72,6 +77,11 @@ func NewConsumerWithClock(writer TelemetryWriter, js JetStreamPublisher, opts Co
 	return &Consumer{writer: writer, js: js, opts: opts, clock: clock}
 }
 
+func (c *Consumer) WithAlertProcessor(p AlertProcessor) *Consumer {
+	c.alertProcessor = p
+	return c
+}
+
 func (c *Consumer) Config() ConsumerOptions {
 	return c.opts
 }
@@ -96,6 +106,11 @@ func (c *Consumer) ProcessBatch(ctx context.Context, msgs []Msg) error {
 	}
 	_, err := c.writer.WriteBatch(ctx, events)
 	c.handleWriteResult(validMsgs, err)
+	if err == nil && c.alertProcessor != nil {
+		for _, evt := range events {
+			_ = c.alertProcessor.Process(ctx, evt.Plate, evt.Lat, evt.Lon, evt.Speed)
+		}
+	}
 	return nil
 }
 

@@ -251,7 +251,25 @@ func (f *AssistantFlow) handleVehicleStatus(ctx context.Context, args map[string
 	if err != nil {
 		return "", Citation{}, fmt.Errorf("get vehicle status failed: %w", err)
 	}
-	reply := FilterOutput(fmt.Sprintf("Vehículo %s estado %s", st.Plate, st.Status))
+	if st.Status == "not_found" {
+		reply := FilterOutput(fmt.Sprintf("Vehículo %s no encontrado en la base de telemetría", st.Plate))
+		return reply, Citation{Tool: ToolVehicleStatus, Count: 0}, nil
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Vehículo %s estado %s", st.Plate, st.Status))
+	if st.Lat != nil && st.Lon != nil {
+		b.WriteString(fmt.Sprintf(", última posición lat %.6f lon %.6f", *st.Lat, *st.Lon))
+	}
+	if !st.ReceivedAt.IsZero() {
+		b.WriteString(fmt.Sprintf(" recibida %s", st.ReceivedAt.Format(time.RFC3339)))
+	}
+	if st.Speed != 0 || (st.Lat != nil) {
+		b.WriteString(fmt.Sprintf(" velocidad %.0f km/h", st.Speed))
+	}
+	if st.ZoneName != nil && *st.ZoneName != "" {
+		b.WriteString(fmt.Sprintf(" zona %s", *st.ZoneName))
+	}
+	reply := FilterOutput(b.String())
 	return reply, Citation{Tool: ToolVehicleStatus, Count: 1}, nil
 }
 

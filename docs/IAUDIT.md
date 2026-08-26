@@ -210,9 +210,123 @@ Por qué falla: DRY breaker drift (cambiar `FailureRatio 0.5->0.6` requiere 3 ed
 Refactor exigido: Exportado `breaker.DefaultTimeout/MinRequests/ConsecutiveThreshold/FailureRatio` + `NewSettings(d)` SSOT, `flow.go` reutiliza `breaker.NewSettings`, `ops.go` con `const retryAfterSeconds`, `BreakerStateProvider`/`HealthProvider` segregados, `OpsHandler{reqs,tools,tokens atomic.Int64}` instanciado, `withRequestID` middleware, `writeJSON` y `metricsPayload` con `strings.Builder` + `strconv.Itoa`, `slog` inyectado, `idgen` con `hex.Encode` buffer y `panic %w`. `go test 6/6 PASS`, `go vet 0`, CC<10.
 Auditor: quality-auditor | architect
 
+## 2026-08-26 — Auditoría: web setup monkey-patch enmascara duplicados [SPEC-004 TASK-004-01]
+Severidad: alta
+Hallazgo: IA `react-web` generó `web/src/test/setup.ts` con `screen.getByText = (text) => { try getByText catch => getAllByText[0] }` global y `Math.random = () => 0`, y `VehicleCard.test.tsx` renderea `VehicleCard + VehicleStatusBadge` suelto duplicando `Moving/⚠️` para que el patch lo tape.
+Evidencia: web/src/test/setup.ts:4-15 (pre refactor, ver git diff 3f677e6..HEAD y quality-auditor ses_fc632d75)
+Por qué falla: Violación test isolation/AAA y Go idiomático: patch global convierte fallo real (`Found multiple elements`) en verde falso, contamina toda la suite; `shared mutable state` sin restore impide paralelizar `vitest --run` y oculta violación `key estable` y re-render duplicado. `Math.random` crudo rompe determinismo SSE jitter y `crypto.randomUUID` fallback.
+Refactor exigido: Eliminado patch (dejar `screen.getByText` nativo), test corregido a no rendear badge duplicado y usar `within`/`getAllByText` explícito, `Math.random` vía `vi.spyOn(Math,"random").mockReturnValue(0)` con `afterEach` guard + `afterAll restore`. `npm test -- --run` 66/66 pass sin patch, `npm run build` y `lint` verdes. Commit feat(portal) TASK-004-01.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: web PLATE_RE duplicada + warning en Status vs Speed [SPEC-004 TASK-004-01]
+Severidad: media
+Hallazgo: IA duplicó `PLATE_RE = /^[A-Z]{3}[0-9]{3}$/` en `web/src/lib/plate.ts` y `/\b[A-Z]{3}[0-9]{3}\b/g` en `web/src/chat/usePlateHighlight.ts`, y puso `⚠️` dentro de `VehicleStatusBadge` (junto a Moving/Idle) dejando `Speed: 90` sin alerta en `VehicleCard`.
+Evidencia: web/src/lib/plate.ts:1 vs web/src/chat/usePlateHighlight.ts:4 y web/src/features/monitoring/VehicleStatusBadge.tsx:11 pre refactor (ses_fc632d75)
+Por qué falla: Viola DRY single source (BR-002): si cambia a 4 letras diverge highlight vs validación; `global regex /g` stateful `lastIndex` flaky en hot path chat 1k replies. Fidelidad Figma rota: spec `Speed: 90 ⚠️ si >80` (AC-001 BR-007) muestra warning en Status, usuario lo asocia mal; test pasaba solo por badge suelto duplicado.
+Refactor exigido: Exportado `PLATE_RE_GLOBAL = /\b[A-Z]{3}[0-9]{3}\b/g` en `lib/plate.ts` e importado en `usePlateHighlight.ts`; movido `⚠️` a `VehicleCard.tsx` junto a `Speed:` y dejado `VehicleStatusBadge` puro `font-semibold bg-green-50` para pasar WCAG AA. `npm test` 66/66 pass. Commit feat(portal) TASK-004-01.
+Auditor: quality-auditor | frontend-auditor | architect
+
 ## Convenciones
 
+## 2026-08-26 — Auditoría: App stub sin wiring + useFleetStream O(n) + solo onmessage [SPEC-004 TASK-004-02]
+Severidad: alta
+Hallazgo: IA generó `useFleetStream` con upsert `findIndex + [...cur]` O(n) alloc por `fleet:position`, store `fleetStore` solo `selectedPlate` y hook usaba `as unknown as {vehicles}` cast, `App.tsx` stub `Map vehicles={[]}` sin `useFleetStream/VehicleSearch/VehicleCard`, `Map.tsx` sin `useMap setView`, y `useSSE` solo `es.onmessage` sin `addEventListener('fleet:position')`.
+Evidencia: web/src/hooks/useFleetStream.ts:46-55, web/src/store/fleetStore.ts:3-6, web/src/App.tsx:8, web/src/map/Map.tsx:35, web/src/hooks/useSSE.ts:12-45 pre refactor (ses_fc6060d1)
+Por qué falla: `O(n)` copia array * 50evt/s *5k vehículos =10MB/s GC + `as unknown` rompe `tsc --noEmit` estricto + `App` falso GREEN (AC-010 no e2e) + `map.setView` ausente viola AC-001 centrado <2s + solo `onmessage` ignora `event: fleet:position` (AsyncAPI) y card nunca actualiza en prod.
+Refactor exigido: `fleetStore` formal `vehicles: Map<string,FleetPosition>` upsert O(1), `useSSE` genérico con `event` param y `onmessage + addEventListener(event)`, `useFleetStream` compone `useSSE` con `encodeURIComponent(?plate)` y `parseFleetPosition` puro, `Map.tsx` componente `Recenter useMap()` + `setView`, `App.tsx` wiring `vehicles/vehicle/Search/Card/Clear`. `npm test 77/77, build 275 modules, re-auditoría 0 altas. Commit feat(portal) TASK-004-02.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## Convenciones
+
+## 2026-08-26 — Auditoría: AlertsPanel dedup O(n²) + CC keepalive [SPEC-004 TASK-004-03a]
+Severidad: alta
+Hallazgo: IA generó `useAlertsSSE` con `setAlerts(prev=>{ if(prev.some(k)) return prev; return [...prev,data] })` O(n) scan + copia por `alert:critical` sin cap, y `isKeepAlive` + `JSON.parse` con 5 chequeos redundantes `raw === ":ping"` / `type==="ping"` / `trimmed===":ping"` / `data===":ping"` con try.
+Evidencia: web/src/hooks/useAlertsSSE.ts:40-44 y 22-36 pre refactor (ses_fc5e602)
+Por qué falla: `O(n²)` total: 1000 alertas retenidas * 1000 scan =1M comparaciones + 500k copias → fuga memoria navegador 5k flota (NFR-002), sin cap DOM crece infinito. CC>10 impide test `2^17` paths y `:ping` coment line SSE (BR-005) nunca dispara onmessage.
+Refactor exigido: Extraído `lib/alert.ts` `getDedupKey/isValidAlert/isKeepAlive/parseAlert` single source CC<6, `useAlertsSSE` con `Set O(1) + MAX_ALERTS 100 cap` y `useSSE` filtra keepalive en dueño protocolo. `AlertsPanel` `role=log aria-live` + `role=list/listitem` + `<time dateTime>`. `setup.ts` limitado a jest-dom sin monkey-patch. `82/82 pass` re-auditoría 0 altas.
+Auditor: quality-auditor | frontend-auditor | architect
+
 - Severidad alta = task NO cerrado hasta refactor + re-auditoría.
+## 2026-08-26 — Auditoría: Chat useChatApi race leak + BottomPanelShell DRY [SPEC-004 TASK-004-03b]
+Severidad: alta
+Hallazgo: IA generó `chat/useChatApi` con `AbortController + setTimeout 15s` sobrescribiendo `abortRef/timeoutRef` sin abortar/clear previo, `loading` toggle cruzado y `BottomPanelShell` duplicado: `ChatTab` y `AlertsPanel` copiaban `h-[280px] + role=log` y `App` montaba `ChatWidget` suelto fuera del panel fijo, doble `role=log` y doble scroll `h-[280px] + .log max-height 400px`.
+Evidencia: web/src/chat/useChatApi.ts:24-27 pre refactor, web/src/features/monitoring/ChatTab.tsx:10-20 y AlertsPanel.tsx:24-39 duplicado, web/src/App.tsx:44 <ChatWidget/> suelto (ses_fc5c3d22)
+Por qué falla: `2º sendMessage` overwrites `abortRef`/`timeoutRef` → `finally` de 1ª limpia timeout de 2ª (leak) y `loading` queda idle con request pending; `11 req/min` BR-011 reproduce 100%. DRY shell obliga 2 edits para cambiar `lg:h-[340px]`; doble `role=log` anuncia form 2 veces y doble scroll rompe `overflow-y-auto`.
+Refactor exigido: `useChatApi` guarda `prevCtrl/prevT` y abort/clear antes de re-asignar, `if(loading) return` + cleanup condicional `if(current===id)`, helpers `buildRequest/fetchWithFallbackSignal/mapStatusToError` CC<5; `BottomPanelShell` centraliza `h-[280px] lg:h-[340px] overflow-y-auto flex flex-col` + `portalStore` hidden, `ChatTab/AlertsPanel` lo usan, `App` reemplaza Widget suelto por `ChatTab`, `role=log` solo en `MessageList`, `.log flex:1`. `87/87 pass` re-auditoría 0 altas.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: Zones fetch duplicado + JSON.stringify + 100vh [SPEC-004 TASK-004-05]
+Severidad: media
+Hallazgo: IA generó `ZonesList` y `Map` con `fetch GET /api/zones` duplicado (BR-004 única fuente rota, 2× p95 200ms + race setGeoJson), `ZoneDrawControl` con `JSON.stringify(first) !== JSON.stringify(last)` O(k) alloc frágil a `1 vs 1.0`, doble escritura `store + onDraftChange` y `catch(()=>undefined)` traga Abort/400, tipos `DraftPolygon` triplicados con `unknown` y `Map 100vh` overflow.
+Evidencia: web/src/features/zones/ZonesList.tsx:19-32 + web/src/map/Map.tsx:54-65, ZoneDrawControl.tsx:61-67, store/portalStore.ts:9 pre refactor (ses_fc580)
+Por qué falla: `2× fetch` rompe contrato canónico `GET /api/zones` mapa+agente, `JSON.stringify` falla con EPSG:4326 tolerancia y `O(k)` alloc, `as unknown` anula `tsc`, `100vh` + header desborda grid y doble `data-testid zones-list`.
+Refactor exigido: `useZones` hook único con `AbortController + r.ok`, `Map` solo por prop `zones`, `types.ts` centraliza `DraftPolygon/validatePolygon` pura, `isKeepAlive` + `getDedupKey` single source, `Map h-full w-full` y tokens `ZONES_PANEL_FIXED`. `98/98 pass` re-auditoría 0 medias bloqueantes (solo 3 bajas factor 2 fetch).
+Auditor: quality-auditor | frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: Modales huérfanos sin wiring + dialog sin focus trap [SPEC-004 TASK-004-06]
+Severidad: alta
+Hallazgo: IA generó `CreateZoneModal` y `EditZoneModal` con `role=dialog` pero nunca montados en `App/ZonesList` (botón `Create zone` sin `onClick`, filas sin `onDoubleClick`), sin focus-trap/Esc/autofocus, `Accept` siempre habilitado sin `name.trim()`, parsing `400/409` duplicado ×3 y `name` stale al reabrir.
+Evidencia: web/src/features/zones/CreateZoneModal.tsx:6-72 + EditZoneModal.tsx:5-114 + App.tsx:123-126 pre refactor (ses_fc562f)
+Por qué falla: Feature GREEN falso (tests aislados pasan pero portal no crea/edita zonas, AC-007/009 huérfanos), WCAG 2.4.3 focus escapa al mapa/leaflet, DRY ×3 drift `details/error/message`, UX click → flash 400.
+Refactor exigido: `App` eleva `createOpen/editZone` + monta ambos modales con `onClose/onCreated/onRenamed/onDeleted → useZones refetch`, `lib/useDialogFocus` hook trap Tab/Esc + restore focus, `isAcceptDisabled=!name.trim()||!draft`, `api.ts parseZoneApiError/zoneApiUrl` DRY, `useEffect reset name/error` al abrir. `109/109 pass` re-auditoría 0 altas/medias.
+Auditor: quality-auditor | frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: reviewer clean architecture + error wrap + secrets [SPEC-004]
+Severidad: media
+Hallazgo: IA dejó default DSN `postgres://fleet:fleet@localhost` en `consumer/bootstrap.go:41` y `backend/.golangci.yml` sin `pg_advisory_lock` runner; `gitleaks.toml` allowlist incompleta para `AQ.`/`sk-`; `specs/**/plan.md` referenciaban IAUDIT rompiendo trazabilidad unidireccional (ADRs deben ser fuente).
+Evidencia: backend/cmd/consumer/bootstrap.go:41, docs/specs/SPEC-003/plan.md:318, docs/specs/SPEC-004/plan.md:277, reviewer ses_fc01814
+Por qué falla: Viola AGENTS.md `domain → application → adapters → infra` y skill `ai-audit` trazabilidad unidireccional; default DSN expone password dummy en imagen si env no seteada.
+Refactor exigido: Cambiar default DSN a `""` fail-closed y documentar rotación `change-me-local` vía secrets manager; reescribir `plan.md` referencias hacia ADRs/commits en vez de IAUDIT; mantener `gitleaks` con reglas `AQ\.` y `sk-`. Commit 808132e (no bloqueante, deuda media).
+Auditor: reviewer | architect
+
+## 2026-08-26 — Auditoría: security 3 altas (secretos, GPS sin auth, ingesta spoofing) [SPEC-004]
+Severidad: alta
+Hallazgo: IA propuso `.env` con `GEMINI_API_KEY` real en disco + `GET /api/fleet/positions` sin JWT + `POST /v1/telemetry` sin HMAC; TLS `sslmode=disable` y `nats://` sin TLS.
+Evidencia: .env:22 `GEMINI_API_KEY=AQ...`, backend/cmd/api/bootstrap.go:208 mux sin auth, backend/internal/telemetry/adapters/http/ingest.go:19 sin token, docker-compose.yml:28 `sslmode=disable`, security ses_fc016769
+Por qué falla: OWASP A07 Secrets, A01 Broken Access Control (GPS PII), A02 Crypto Failure; ingesta sin auth permite spoofing y alertas falsas.
+Refactor exigido: Para MVP local deuda aceptada (AGENTS.md 16GB, ADR-0009 riesgo anónimo documentado, 127.0.0.1 binding, `GENKIT_ENV=dev` guard); prod exige JWT `ValidateAllowlist` + `X-Device-Token` HMAC + `sslmode=require` + NATS TLS. Rotar keys y borrar `.env.save`. No bloquea commit demo.
+Auditor: security | architect
+
+## 2026-08-26 — Auditoría: scalability 3k msg/s con NATS 5GB y single writer [SPEC-002]
+Severidad: media
+Hallazgo: IA dimensionó NATS `MAX_BYTES 5GB DiscardOld 24h` para 3k msg/s → retiene 1.15h luego `DiscardOld` pérdida silenciosa; `consumer` single replica + `telemetry_dedup` sin retention 8GB/día bloat; falta `continuous aggregate` y `compression_policy`.
+Evidencia: infra/nats/stream.go:7 `Duplicates 2m`, docker-compose.yml:175 `JETSTREAM_MAX_BYTES 5368709120`, backend/internal/fleet/adapters/pg/reader.go:90 `COUNT(*)`, scalability ses_fc014a6c
+Por qué falla: A 3k msg/s (15k disp @5s) stream 103GB/día, DB 38GB/día raw → 27GB/semana comprimido; sin `add_compression_policy(7d)` y `add_retention_policy(90d)` crece O(GB/día) y `GetFleetSummary COUNT(*)` escanea chunks.
+Refactor exigido: Para MVP 67-200 msg/s (1k disp) mononodo correcto; para 3k escalar a `MAX_BYTES 50GB`, `NATS_MAX_PENDING 4096`, `consumer replicas 2`, `dedup retention 30d`, `compression 7d`, `continuous aggregate last_position`. Documentado como deuda escalabilidad, no bloquea demo.
+Auditor: scalability | architect
+
+## 2026-08-26 — Auditoría: db keyset OR vs tupla + COUNT(*) hot path [SPEC-002]
+Severidad: alta
+Hallazgo: IA implementó paginación `WHERE (plate > $1 OR (plate=$1 AND received_at < $2))` con `OR` que impide `Index Scan` en `(plate, received_at DESC)` → `BitmapOr` O(n) 300ms vs 5ms; y `GetFleetSummary` con `COUNT(*) WHERE received_at > now()-5m` sin índice BRIN escanea hypertable por request.
+Evidencia: backend/internal/fleet/adapters/pg/reader.go:96, backend/cmd/agent/bootstrap.go:249 `SELECT count(*)`, db-auditor ses_fc0126be
+Por qué falla: Violación NFR-001 p95 <150ms y Timescale best practice; `COUNT(*)` en hot path chat amplifica con 10 RPM.
+Refactor exigido: Cambiar a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC`; reemplazar `COUNT(*)` por `continuous aggregate telemetry_5m` o cache TTL 30s; añadir `telemetry_received_at_brin`. Deuda media/alta aprobada para MVP, exigir `db-auditor` gate antes de cierre SPEC-002/003.
+Auditor: db-auditor | architect
+
+## 2026-08-26 — Auditoría: quality hot path leak + dedup contención [SPEC-004]
+Severidad: alta
+Hallazgo: IA lanzó `go d.StartCleanup(Background)` nunca cancelable (leak 1 goroutine/detector) y `isDupLocked` escanea `dedup` map 10k entries bajo `mu.Lock()` con check-then-act publish fuera de lock → race duplicados y O(n) contención a 1000 msgs/s.
+Evidencia: backend/internal/fleet/application/alert.go:64,98-110, web/src/store/fleetStore.ts:25 `new Map` O(N) por SSE, quality-auditor ses_fc00fef3
+Por qué falla: Resource leak y contención hot path NFR-002; `upsertVehicle` copia `Map` 10k*400/s =4M copias/s.
+Refactor exigido: Eliminar `go` del constructor, exigir `ctx` externo + `Stop()` con `goleak`; mover evicción a `sync.Map` + TTL heap O(log n) y dedup atómico `check+insert` bajo lock antes de publish; frontend usar `immer` o `Map.set` O(1). Deuda alta bloquea done si flota >1k.
+Auditor: quality-auditor | architect
+
+## 2026-08-26 — Auditoría: frontend bundle + panel fijo + re-render [SPEC-004]
+Severidad: alta
+Hallazgo: IA generó bundle monolítico 765k sin `lazy`/`manualChunks`, `ChatWidget.module.css` con `overflow-y: visible` rompe `h-[280px] lg:h-[340px] overflow-y-auto`, y `fleetStore` con `new Map` + `Array.from` remonta 5k markers por cada `fleet:position`.
+Evidencia: web/vite.config.ts, web/src/chat/ChatWidget.module.css:2, web/src/store/fleetStore.ts:25, frontend-auditor ses_fc00e133
+Por qué falla: Viola Figma fidelidad BR-015 y performance NFR-002; TTI >3s móvil, panel crece infinito, main thread bloqueado.
+Refactor exigido: `React.lazy` Map + `manualChunks` leaflet/geoman/markdown, `ChatWidget.module.css` a `overflow-y-auto max-h-[220px]`, `useFleetStore` selectores granulares + `React.memo` Map. Deuda alta para flota >500.
+Auditor: frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: alerts SSE fan-out + JSON snake_case + zone_name [SPEC-002/004]
+Severidad: alta
+Hallazgo: IA dejó `AlertDetector` sin cablear en `cmd/consumer` (ALERTS 0 msgs), `Alert` con `json:"AlertType"` PascalCase vs frontend `alert_type`, y `AlertSubscriber` con `Durable("api-sse-alerts")` compartido → load-balance no broadcast, más `translate` para `zone_exit` sin `zone_name`.
+Evidencia: backend/cmd/consumer/main.go:37 sin detector, backend/internal/fleet/domain/alert.go:16 sin tags, backend/internal/fleet/adapters/nats/subscriber.go:40 `Durable`, web/src/features/monitoring/AlertsPanel.tsx:14, auditorías 2026-08-26 manual
+Por qué falla: `speeding_on/off` y `zone_enter/exit` nunca llegaban a `AlertsPanel` (SSE vacío) y `HYU456 entra en zona` sin nombre; viola SPEC-002 FR-005/006 y FR-011.
+Refactor exigido: Cableado `consumer.WithAlertProcessor(detector)` con `jsPublisher` + `PGZoneResolver` + breaker, `Alert` con `json:"alert_type"` etc. + `ZoneName`, `subscriber` efímero sin Durable (broadcast), `AlertsPanel` con `bg-red-100`/`bg-green-100` y `zone_exit` con nombre. Verificado `ALERTS:5` con `zone_name:"Rafael Uribe"` y SSE `id:13 speeding_on`. Commit 808132e.
+Auditor: architect | reviewer
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,

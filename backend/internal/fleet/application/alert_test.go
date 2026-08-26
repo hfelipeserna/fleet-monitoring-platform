@@ -47,30 +47,32 @@ func (f *fakePublisher) PublishWithMsgID(ctx context.Context, alert fleet.Alert,
 type stubZoneResolver struct {
 	// secuencia de respuestas para llamadas sucesivas
 	responses []struct {
-		zoneID *string
-		inside bool
-		err    error
+		zoneID   *string
+		zoneName *string
+		inside   bool
+		err      error
 	}
 	calls int
-	fn    func(ctx context.Context, plate string, lat, lon float64) (*string, bool, error)
+	fn    func(ctx context.Context, plate string, lat, lon float64) (*string, *string, bool, error)
 }
 
-func (s *stubZoneResolver) IsInside(ctx context.Context, plate string, lat, lon float64) (*string, bool, error) {
+func (s *stubZoneResolver) IsInside(ctx context.Context, plate string, lat, lon float64) (*string, *string, bool, error) {
 	if s.fn != nil {
 		return s.fn(ctx, plate, lat, lon)
 	}
 	if s.calls < len(s.responses) {
 		r := s.responses[s.calls]
 		s.calls++
-		return r.zoneID, r.inside, r.err
+		return r.zoneID, r.zoneName, r.inside, r.err
 	}
-	return nil, false, nil
+	return nil, nil, false, nil
 }
 
 func alertStrPtr(s string) *string { return &s }
 func alertF64Ptr(v float64) *float64 { return &v }
 
 const testZoneID = "550e8400-e29b-41d4-a716-446655440002"
+var testZoneName = "Zona Norte"
 const testPlate = "GTP980"
 
 func fixedClock(t time.Time) func() time.Time {
@@ -233,12 +235,13 @@ func TestAlertDetector(t *testing.T) {
 		zid := testZoneID
 		resolver := &stubZoneResolver{
 			responses: []struct {
-				zoneID *string
-				inside bool
-				err    error
+				zoneID   *string
+				zoneName *string
+				inside   bool
+				err      error
 			}{
 				{zoneID: nil, inside: false},
-				{zoneID: &zid, inside: true},
+				{zoneID: &zid, zoneName: &testZoneName, inside: true},
 			},
 		}
 		det := newTestDetector(pub, resolver, fixedClock(now))
@@ -284,11 +287,12 @@ func TestAlertDetector(t *testing.T) {
 		zid := testZoneID
 		resolver := &stubZoneResolver{
 			responses: []struct {
-				zoneID *string
-				inside bool
+				zoneID   *string
+				zoneName *string
+				inside   bool
 				err    error
 			}{
-				{zoneID: &zid, inside: true},
+				{zoneID: &zid, zoneName: &testZoneName, inside: true},
 				{zoneID: nil, inside: false},
 			},
 		}
@@ -330,8 +334,9 @@ func TestAlertDetector(t *testing.T) {
 		pub := &fakePublisher{}
 		resolver := &stubZoneResolver{
 			responses: []struct {
-				zoneID *string
-				inside bool
+				zoneID   *string
+				zoneName *string
+				inside   bool
 				err    error
 			}{
 				{zoneID: nil, inside: false},
@@ -366,12 +371,13 @@ func TestAlertDetector(t *testing.T) {
 		zid := testZoneID
 		resolver := &stubZoneResolver{
 			responses: []struct {
-				zoneID *string
-				inside bool
+				zoneID   *string
+				zoneName *string
+				inside   bool
 				err    error
 			}{
-				{zoneID: &zid, inside: true},
-				{zoneID: &zid, inside: true},
+				{zoneID: &zid, zoneName: &testZoneName, inside: true},
+				{zoneID: &zid, zoneName: &testZoneName, inside: true},
 			},
 		}
 		det := newTestDetector(pub, resolver, fixedClock(now))
@@ -500,14 +506,15 @@ func TestAlertDetector(t *testing.T) {
 		zid := testZoneID
 		// secuencia: t0 false->true publish, luego true->false, luego false->true en t1 (nuevo bucket)
 		responses := []struct {
-			zoneID *string
-			inside bool
+			zoneID   *string
+			zoneName *string
+			inside   bool
 			err    error
 		}{
 			{zoneID: nil, inside: false},    // priming false
-			{zoneID: &zid, inside: true},    // t0 enter
+			{zoneID: &zid, zoneName: &testZoneName, inside: true},    // t0 enter
 			{zoneID: nil, inside: false},    // exit
-			{zoneID: &zid, inside: true},    // t1 enter nuevo bucket
+			{zoneID: &zid, zoneName: &testZoneName, inside: true},    // t1 enter nuevo bucket
 		}
 		current := t0
 		clock := func() time.Time { return current }

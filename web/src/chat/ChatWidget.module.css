@@ -1,10 +1,13 @@
-.widget { display: flex; flex-direction: column; gap: 0.5rem; }
-.log { overflow: auto; max-height: 400px; display: flex; flex-direction: column; gap: 0.5rem; }
+.widget { display: flex; flex-direction: column; gap: 0.5rem; height: 100%; flex: 1; min-height: 0; }
+.log { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; overflow-y: visible; overflow-x: hidden; min-height: 0; }
 .message { padding: 0.25rem 0; }
 .citations { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .citation { margin-right: 0.5rem; font-size: 0.85rem; opacity: 0.8; }
 .form { display: flex; gap: 0.5rem; }
 .input { flex: 1; padding: 0.5rem; }
-.button { padding: 0.5rem 1rem; }
+.button { padding: 0.5rem 1rem; background-color: #2563eb; color: white; border-radius: 0.375rem; border: none; cursor: pointer; }
+.button:hover { background-color: #1d4ed8; }
+.button:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.button:disabled { opacity: 0.5; cursor: not-allowed; }
 .badge { display: inline-block; padding: 0.15rem 0.4rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.8rem; }
 .alert { color: #b91c1c; }

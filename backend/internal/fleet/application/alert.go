@@ -25,7 +25,7 @@ type Publisher interface {
 }
 
 type ZoneResolver interface {
-	IsInside(ctx context.Context, plate string, lat, lon float64) (*string, bool, error)
+	IsInside(ctx context.Context, plate string, lat, lon float64) (*string, *string, bool, error)
 }
 
 type Option func(*AlertDetector)
@@ -37,24 +37,26 @@ func WithClock(fn func() time.Time) Option {
 }
 
 type AlertDetector struct {
-	pub        Publisher
-	resolver   ZoneResolver
-	clock      func() time.Time
-	mu         sync.Mutex
-	prevSpeed  map[string]int
-	prevInside map[string]bool
-	prevZoneID map[string]*string
-	dedup      map[string]time.Time
+	pub          Publisher
+	resolver     ZoneResolver
+	clock        func() time.Time
+	mu           sync.Mutex
+	prevSpeed    map[string]int
+	prevInside   map[string]bool
+	prevZoneID   map[string]*string
+	prevZoneName map[string]*string
+	dedup        map[string]time.Time
 }
 
 func NewAlertDetector(pub Publisher, resolver ZoneResolver, opts ...Option) *AlertDetector {
 	d := &AlertDetector{
-		pub:        pub,
-		resolver:   resolver,
-		prevSpeed:  make(map[string]int),
-		prevInside: make(map[string]bool),
-		prevZoneID: make(map[string]*string),
-		dedup:      make(map[string]time.Time),
+		pub:          pub,
+		resolver:     resolver,
+		prevSpeed:    make(map[string]int),
+		prevInside:   make(map[string]bool),
+		prevZoneID:   make(map[string]*string),
+		prevZoneName: make(map[string]*string),
+		dedup:        make(map[string]time.Time),
 	}
 	for _, o := range opts {
 		o(d)
@@ -118,17 +120,25 @@ func (d *AlertDetector) Process(ctx context.Context, plate string, lat, lon *flo
 		cp := *prevZone
 		prevZoneCopy = &cp
 	}
+	prevZoneNameVal := d.prevZoneName[plate]
+	var prevZoneNameCopy *string
+	if prevZoneNameVal != nil {
+		cp := *prevZoneNameVal
+		prevZoneNameCopy = &cp
+	}
 	d.mu.Unlock()
 
 	var inside bool
 	var zoneID *string
+	var zoneName *string
 	if lat != nil && lon != nil {
-		zid, ins, err := d.resolveZone(ctx, plate, *lat, *lon)
+		zid, zname, ins, err := d.resolveZone(ctx, plate, *lat, *lon)
 		if err != nil {
 			return err
 		}
 		inside = ins
 		zoneID = zid
+		zoneName = zname
 	}
 
 	if err := d.handleSpeed(ctx, plate, lat, lon, speed, now, prevSpeed, hasPrevSpeed); err != nil {
@@ -137,22 +147,26 @@ func (d *AlertDetector) Process(ctx context.Context, plate string, lat, lon *flo
 	if lat == nil || lon == nil {
 		return nil
 	}
-	if err := d.handleZone(ctx, plate, lat, lon, speed, now, prevInside, hasPrevInside, prevZoneCopy, inside, zoneID); err != nil {
+	if err := d.handleZone(ctx, plate, lat, lon, speed, now, prevInside, hasPrevInside, prevZoneCopy, prevZoneNameCopy, inside, zoneID, zoneName); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *AlertDetector) resolveZone(ctx context.Context, plate string, lat, lon float64) (*string, bool, error) {
-	zid, inside, err := d.resolver.IsInside(ctx, plate, lat, lon)
+func (d *AlertDetector) resolveZone(ctx context.Context, plate string, lat, lon float64) (*string, *string, bool, error) {
+	zid, zname, inside, err := d.resolver.IsInside(ctx, plate, lat, lon)
 	if err != nil {
-		return nil, false, fmt.Errorf("zone resolver: %w", err)
+		return nil, nil, false, fmt.Errorf("zone resolver: %w", err)
 	}
 	if zid != nil {
 		cp := *zid
 		zid = &cp
 	}
-	return zid, inside, nil
+	if zname != nil {
+		cp := *zname
+		zname = &cp
+	}
+	return zid, zname, inside, nil
 }
 
 func speedTransition(prev int, hasPrev bool, curr int) (string, bool) {
@@ -243,52 +257,74 @@ func (d *AlertDetector) handleSpeed(ctx context.Context, plate string, lat, lon 
 	return nil
 }
 
-func (d *AlertDetector) handleZone(ctx context.Context, plate string, lat, lon *float64, speed int, now time.Time, prevInside bool, hasPrev bool, prevZoneID *string, inside bool, zoneID *string) error {
+func (d *AlertDetector) handleZone(ctx context.Context, plate string, lat, lon *float64, speed int, now time.Time, prevInside bool, hasPrev bool, prevZoneID *string, prevZoneName *string, inside bool, zoneID *string, zoneName *string) error {
 	alertType, zoneOut, emit := zoneTransition(prevInside, hasPrev, inside, zoneID, prevZoneID)
 	if !emit {
 		d.mu.Lock()
-		d.storeZoneStateLocked(plate, inside, zoneID)
+		d.storeZoneStateLocked(plate, inside, zoneID, zoneName)
 		d.mu.Unlock()
 		return nil
 	}
 	if zoneOut == nil {
 		d.mu.Lock()
-		d.storeZoneStateLocked(plate, inside, zoneID)
+		d.storeZoneStateLocked(plate, inside, zoneID, zoneName)
 		d.mu.Unlock()
 		return fmt.Errorf("zone_enter missing zoneID: %w", errors.Join(shared.ErrValidation, ErrMissingZoneID, fmt.Errorf("missing zone")))
+	}
+	var zoneNameOut *string
+	if alertType == "zone_enter" {
+		zoneNameOut = zoneName
+	} else if alertType == "zone_exit" {
+		if prevZoneName != nil {
+			cp := *prevZoneName
+			zoneNameOut = &cp
+		} else if zoneName != nil {
+			cp := *zoneName
+			zoneNameOut = &cp
+		} else if zoneOut != nil {
+			zoneNameOut = nil
+		}
+	} else {
+		zoneNameOut = zoneName
 	}
 	bucket := fleet.BucketFor(alertType, now)
 	key := fmt.Sprintf("%s:%s:%s:%d", plate, alertType, *zoneOut, bucket)
 	d.mu.Lock()
 	dup := d.isDupLocked(key, now)
 	if dup {
-		d.storeZoneStateLocked(plate, inside, zoneID)
+		d.storeZoneStateLocked(plate, inside, zoneID, zoneName)
 		d.mu.Unlock()
 		return nil
 	}
 	d.mu.Unlock()
-	if err := d.publishZoneAlert(ctx, plate, lat, lon, speed, now, alertType, zoneOut); err != nil {
+	if err := d.publishZoneAlert(ctx, plate, lat, lon, speed, now, alertType, zoneOut, zoneNameOut); err != nil {
 		d.mu.Lock()
-		d.storeZoneStateLocked(plate, inside, zoneID)
+		d.storeZoneStateLocked(plate, inside, zoneID, zoneName)
 		d.mu.Unlock()
 		return err
 	}
 	d.mu.Lock()
 	d.dedup[key] = now
-	d.storeZoneStateLocked(plate, inside, zoneID)
+	d.storeZoneStateLocked(plate, inside, zoneID, zoneName)
 	d.mu.Unlock()
 	return nil
 }
 
-func (d *AlertDetector) publishZoneAlert(ctx context.Context, plate string, lat, lon *float64, speed int, now time.Time, alertType string, zoneID *string) error {
+func (d *AlertDetector) publishZoneAlert(ctx context.Context, plate string, lat, lon *float64, speed int, now time.Time, alertType string, zoneID *string, zoneName *string) error {
 	rlat, rlon := roundLatLon(lat, lon)
 	cp := *zoneID
 	zid := &cp
+	var zname *string
+	if zoneName != nil {
+		cp2 := *zoneName
+		zname = &cp2
+	}
 	a := fleet.Alert{
 		EventID:   idgen.GenerateUUID(),
 		Plate:     plate,
 		AlertType: alertType,
 		ZoneID:    zid,
+		ZoneName:  zname,
 		Lat:       rlat,
 		Lon:       rlon,
 		Speed:     speed,
@@ -303,15 +339,22 @@ func (d *AlertDetector) publishZoneAlert(ctx context.Context, plate string, lat,
 	return nil
 }
 
-func (d *AlertDetector) storeZoneStateLocked(plate string, inside bool, zoneID *string) {
+func (d *AlertDetector) storeZoneStateLocked(plate string, inside bool, zoneID *string, zoneName *string) {
 	d.prevInside[plate] = inside
 	if inside && zoneID != nil {
 		cp := *zoneID
 		d.prevZoneID[plate] = &cp
+		if zoneName != nil {
+			cp2 := *zoneName
+			d.prevZoneName[plate] = &cp2
+		} else {
+			d.prevZoneName[plate] = nil
+		}
 		return
 	}
 	if !inside {
 		d.prevZoneID[plate] = nil
+		d.prevZoneName[plate] = nil
 	}
 }
 

@@ -13,6 +13,7 @@ type fakeRows struct {
 	nextCalls   int
 	nextRet     []bool
 	scanID      string
+	scanName    string
 	scanErr     error
 	err         error
 	closeCalled bool
@@ -34,6 +35,11 @@ func (f *fakeRows) Scan(dest ...any) error {
 	if len(dest) > 0 {
 		if s, ok := dest[0].(*string); ok {
 			*s = f.scanID
+		}
+	}
+	if len(dest) > 1 {
+		if s, ok := dest[1].(*string); ok {
+			*s = f.scanName
 		}
 	}
 	return nil
@@ -74,7 +80,7 @@ func TestPGZoneResolver_IsInside(t *testing.T) {
 		r := NewZoneResolver(q)
 
 		// Act
-		id, inside, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		id, _, inside, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err != nil {
@@ -95,7 +101,7 @@ func TestPGZoneResolver_IsInside(t *testing.T) {
 		r := NewZoneResolver(q)
 
 		// Act
-		id, inside, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		id, _, inside, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err != nil {
@@ -115,7 +121,7 @@ func TestPGZoneResolver_IsInside(t *testing.T) {
 		r := NewZoneResolver(q)
 
 		// Act
-		_, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		_, _, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err == nil {
@@ -130,7 +136,7 @@ func TestPGZoneResolver_IsInside(t *testing.T) {
 		r := NewZoneResolver(q)
 
 		// Act
-		_, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		_, _, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err == nil {
@@ -145,7 +151,7 @@ func TestPGZoneResolver_IsInside(t *testing.T) {
 		r := NewZoneResolver(q)
 
 		// Act
-		_, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		_, _, _, err := r.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err == nil {
@@ -165,7 +171,7 @@ func TestZoneResolverWithBreaker_IsInside(t *testing.T) {
 		w := NewZoneResolverWithBreaker(inner, brk, 2*time.Second)
 
 		// Act
-		_, _, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		_, _, _, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err == nil {
@@ -185,7 +191,7 @@ func TestZoneResolverWithBreaker_IsInside(t *testing.T) {
 		w := NewZoneResolverWithBreaker(inner, brk, 2*time.Second)
 
 		// Act
-		id, inside, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		id, _, inside, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err != nil {
@@ -205,7 +211,7 @@ func TestZoneResolverWithBreaker_IsInside(t *testing.T) {
 		w := NewZoneResolverWithBreaker(inner, brk, 2*time.Second)
 
 		// Act
-		_, _, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
+		_, _, _, err := w.IsInside(context.Background(), "ABC123", 4.7, -74.0)
 
 		// Assert
 		if err == nil {

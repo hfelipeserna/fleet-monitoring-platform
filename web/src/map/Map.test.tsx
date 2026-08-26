@@ -53,6 +53,13 @@ describe("Map", () => {
       }
       return Promise.resolve(new Response("{}", { status: 200 }));
     });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() { return 800; } });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return 600; } });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return 800; } });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get() { return 600; } });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON() { return {}; } } as unknown as DOMRect;
+    } as never;
   });
 
   afterEach(() => {
@@ -108,17 +115,16 @@ describe("Map", () => {
   });
 
   it("GeoJSON overlay rojo fillOpacity 0.2", async () => {
-    // Arrange
-    // ensure fetch for zones will be called by Map
+    // Arrange — Map recibe zones por prop vía useZones (BR-004 única fuente), no fetch duplicado
     fetchSpy.mockClear();
 
     // Act
     render(<Map vehicles={buildVehicles(5)} zones={zonesFixture} />);
 
-    // Assert — fetch /api/zones called and GeoJSON rendered with style red 0.2
+    // Assert — GeoJSON rendered with style red 0.2 (prop, no fetch requerido)
     await waitFor(() => {
-      const zoneCalls = fetchSpy.mock.calls.filter(([arg]: any) => String(arg).includes("/api/zones"));
-      expect(zoneCalls.length).toBeGreaterThan(0); // AC-007 GET /api/zones
+      const geoCheck = document.querySelectorAll("path.leaflet-interactive, .leaflet-overlay-pane path");
+      expect(geoCheck.length).toBeGreaterThan(0);
     });
 
     // GeoJSON overlay must be rojo with fillOpacity 0.2

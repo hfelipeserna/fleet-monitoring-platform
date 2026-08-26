@@ -35,6 +35,8 @@ func main() {
 	defer pool.Close()
 	writer, dbBreaker, publishBreaker := bootstrapBreakers(pool)
 	consumer, opts := bootstrapConsumer(writer, js)
+	detector := bootstrapAlertDetector(pool, js)
+	consumer.WithAlertProcessor(detector)
 	dlqJS := bootstrapDLQ(js)
 	dlqHandler := httpadapter.NewDLQHandler(dlqJS)
 	go serveHealth(cfg.healthPort, dlqHandler, dbBreaker, publishBreaker)

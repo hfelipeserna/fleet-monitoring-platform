@@ -59,8 +59,8 @@ describe("TestChatWidget", () => {
       await waitFor(() =>
         expect(screen.getByText(/GTP980 lleva 27m/)).toBeInTheDocument(),
       );
-      expect(screen.getByText(/findVehiclesStoppedInCriticalZones/)).toBeInTheDocument();
-      expect(screen.getAllByText(/2/).length).toBeGreaterThan(0);
+      expect(screen.queryByText(/findVehiclesStoppedInCriticalZones/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/listPlates/)).not.toBeInTheDocument();
 
       // Assert markdown render (reply rendered, not raw JSON)
       expect(document.body.innerHTML).toContain("GTP980");

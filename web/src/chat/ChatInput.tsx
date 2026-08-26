@@ -9,16 +9,18 @@ export function ChatInput({
   disabled?: boolean;
 }) {
   const [value, setValue] = useState("");
+  const isEmpty = value.trim() === "";
+  const isDisabled = Boolean(disabled || isEmpty);
 
   const handle = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
       const v = value.trim();
-      if (!v || disabled) return;
+      if (!v || disabled || isEmpty) return;
       onSubmit(v);
       setValue("");
     },
-    [value, onSubmit, disabled],
+    [value, onSubmit, disabled, isEmpty],
   );
 
   return (
@@ -31,8 +33,14 @@ export function ChatInput({
         disabled={disabled}
         className={styles.input}
       />
-      <button type="submit" disabled={disabled} aria-label="Enviar" className={styles.button}>
-        {disabled ? "Enviando..." : "Send"}
+      <button
+        type="submit"
+        disabled={isDisabled}
+        aria-disabled={isDisabled ? "true" : undefined}
+        aria-label="Enviar"
+        className={`${styles.button} bg-blue-600 hover:bg-blue-700 text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded disabled:opacity-50`}
+      >
+        {disabled ? "Enviando..." : "↩"}
       </button>
     </form>
   );

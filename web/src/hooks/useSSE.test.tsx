@@ -30,7 +30,7 @@ class MockEventSource {
   }
   simulateMessage(data: string, lastEventId?: string) {
     const evt = new MessageEvent("message", { data } as MessageEventInit);
-    if (lastEventId) (evt as unknown as Record<string, string>).lastEventId = lastEventId;
+    if (lastEventId) Object.defineProperty(evt, "lastEventId", { value: lastEventId, writable: true });
     this.onmessage?.(evt);
   }
 }
@@ -44,6 +44,7 @@ describe("useSSE", () => {
     MockEventSource.instances = [];
     originalEventSource = (globalThis as unknown as Record<string, unknown>).EventSource;
     (globalThis as unknown as Record<string, unknown>).EventSource = MockEventSource as unknown as typeof EventSource;
+    vi.spyOn(Math, "random").mockReturnValue(0);
     vi.useFakeTimers();
   });
 

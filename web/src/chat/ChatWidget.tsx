@@ -11,7 +11,7 @@ import styles from "./ChatWidget.module.css";
 export default function ChatWidget() {
   const { loading, error, sendMessage } = useChatApi();
   const { messages, pushUser, pushAssistant } = useChatMessages(50);
-  const { selectedPlate, highlightFromReply } = usePlateHighlight();
+  const { highlightFromReply } = usePlateHighlight();
   const handleSubmit = useCallback(async (v: string) => {
     pushUser(v);
     const data = await sendMessage(v);
@@ -22,7 +22,6 @@ export default function ChatWidget() {
   return (
     <div aria-label="chat widget" className={styles.widget}>
       <MessageList messages={messages} />
-      {selectedPlate ? <span data-testid={`highlight-${selectedPlate}`} data-plate={selectedPlate} className={styles.badge}>{selectedPlate}</span> : null}
       {error ? <div role="alert" aria-live="assertive" className={styles.alert}>{error}</div> : null}
       <ChatInput onSubmit={handleSubmit} disabled={loading} />
     </div>
