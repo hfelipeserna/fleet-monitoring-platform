@@ -4,9 +4,11 @@ import { ZONES_PANEL_FIXED } from "../../lib/ui";
 
 type ZonesListProps = {
   onEdit?: (zone: ZoneFeature) => void;
+  onSelect?: (id: string | null) => void;
+  selectedId?: string | null;
 };
 
-export default function ZonesList({ onEdit }: ZonesListProps) {
+export default function ZonesList({ onEdit, onSelect, selectedId }: ZonesListProps) {
   const { zones, error } = useZones();
 
   if (error) {
@@ -25,28 +27,35 @@ export default function ZonesList({ onEdit }: ZonesListProps) {
   return (
     <div data-testid="zones-list" aria-live="polite" className={`flex-1 ${ZONES_PANEL_FIXED}`}>
 
-      {zones.features.map((f, i) => (
-        <div
-          key={String(f.id)}
-          className={i % 2 === 0 ? "bg-emerald-100 p-2" : "bg-cyan-100 p-2"}
-          onDoubleClick={() => onEdit?.(f)}
-          role={onEdit ? "button" : undefined}
-          tabIndex={onEdit ? 0 : undefined}
-          aria-label={onEdit ? `Editar zona ${f.properties.name}` : undefined}
-          onKeyDown={
-            onEdit
-              ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onEdit(f);
+      {zones.features.map((f, i) => {
+        const isSelected = selectedId != null && String(f.id) === selectedId;
+        const base = i % 2 === 0 ? "bg-emerald-100" : "bg-cyan-100";
+        const selectedCls = isSelected ? " bg-blue-200 ring-2 ring-blue-500" : "";
+        return (
+          <div
+            key={String(f.id)}
+            className={`${base} p-2 cursor-pointer hover:bg-gray-100${selectedCls}`}
+            onClick={() => onSelect?.(String(f.id))}
+            onDoubleClick={() => onEdit?.(f)}
+            role={onEdit || onSelect ? "button" : undefined}
+            tabIndex={onEdit || onSelect ? 0 : undefined}
+            aria-label={onEdit ? `Editar zona ${f.properties.name}` : f.properties.name}
+            aria-selected={isSelected ? "true" : undefined}
+            onKeyDown={
+              onEdit
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onEdit(f);
+                    }
                   }
-                }
-              : undefined
-          }
-        >
-          {f.properties.name}
-        </div>
-      ))}
+                : undefined
+            }
+          >
+            {f.properties.name}
+          </div>
+        );
+      })}
     </div>
   );
 }

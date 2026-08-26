@@ -8,18 +8,22 @@ type PortalStore = {
   activeBottom: ActiveBottom;
   activeTop: ActiveTop;
   draftPolygon: DraftPolygon | null;
+  selectedZoneId: string | null;
   setActiveBottom: (v: ActiveBottom) => void;
   setActiveTop: (v: ActiveTop) => void;
   setDraftPolygon: (v: DraftPolygon | null) => void;
+  setSelectedZoneId: (v: string | null) => void;
 };
 
 export const usePortalStore = create<PortalStore>((set) => ({
   activeBottom: "alerts",
   activeTop: "monitoring",
   draftPolygon: null,
+  selectedZoneId: null,
   setActiveBottom: (activeBottom) => set({ activeBottom }),
   setActiveTop: (activeTop) => set({ activeTop }),
   setDraftPolygon: (draftPolygon) => set({ draftPolygon }),
+  setSelectedZoneId: (selectedZoneId) => set({ selectedZoneId }),
 }));
 
 export default usePortalStore;

@@ -115,9 +115,14 @@ export default function App() {
   const setActiveTop = usePortalStore((s) => s.setActiveTop);
   const draftPolygon = usePortalStore((s) => s.draftPolygon);
   const setDraftPolygon = usePortalStore((s) => s.setDraftPolygon);
+  const selectedZoneId = usePortalStore((s) => s.selectedZoneId);
+  const setSelectedZoneId = usePortalStore((s) => s.setSelectedZoneId);
   const [createOpen, setCreateOpen] = useState(false);
   const [editZone, setEditZone] = useState<ZoneFeature | null>(null);
   const notFound = !!selectedPlate && vehicles.length > 0 && vehicle === null;
+  const displayZones = selectedZoneId
+    ? { type: "FeatureCollection" as const, features: zones.features.filter((f) => String(f.id) === selectedZoneId) }
+    : zones;
 
   function handleClear() {
     setSelectedPlate(null);
@@ -151,7 +156,7 @@ export default function App() {
           aria-labelledby="tab-zones"
           className={activeTop !== "zones" ? "hidden" : `${ZONES_PANEL_FIXED} flex flex-col`}
         >
-          <ZonesList onEdit={(z) => setEditZone(z)} />
+          <ZonesList onEdit={(z) => setEditZone(z)} onSelect={(id) => setSelectedZoneId(id)} selectedId={selectedZoneId} />
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
@@ -162,7 +167,7 @@ export default function App() {
           </button>
         </div>
         <div className="flex-1 relative min-h-[300px]">
-          <Map vehicles={vehicles} selectedVehicle={vehicle} zones={zones}>
+          <Map vehicles={vehicles} selectedVehicle={vehicle} zones={displayZones} selectedZoneId={selectedZoneId}>
             {activeTop === "zones" ? <ZoneDrawControl /> : null}
           </Map>
         </div>

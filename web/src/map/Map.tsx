@@ -18,6 +18,7 @@ export type MapProps = {
   vehicles?: Vehicle[];
   zones?: ZonesFC | null;
   selectedVehicle?: Vehicle | null;
+  selectedZoneId?: string | null;
   children?: React.ReactNode;
 };
 
@@ -44,8 +45,14 @@ function Recenter({ vehicle }: { vehicle?: Vehicle | null }) {
   return null;
 }
 
-export default function Map({ vehicles = [], zones, selectedVehicle, children }: MapProps) {
+export default function Map({ vehicles = [], zones, selectedVehicle, selectedZoneId = null, children }: MapProps) {
   const markers = vehicles.filter((v) => v.lat != null && v.lon != null);
+  const displayZones: ZonesFC | null = (() => {
+    if (!zones) return null;
+    if (!selectedZoneId) return zones;
+    const filtered = zones.features.filter((f) => String(f.id) === selectedZoneId);
+    return { type: "FeatureCollection", features: filtered };
+  })();
   return (
     <MapContainer
       center={[4.71, -74.07]}
@@ -67,8 +74,18 @@ export default function Map({ vehicles = [], zones, selectedVehicle, children }:
           <Marker key={v.plate} position={[v.lat as number, v.lon as number]} title={v.plate} alt={`vehicle ${v.plate}`} />
         ))
       )}
-      {zones ? (
-        <GeoJSON data={zones as never} style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })} />
+      {displayZones ? (
+        <GeoJSON
+          key={selectedZoneId ?? "all"}
+          data={displayZones as never}
+          style={(feature) => {
+            const fid = (feature as unknown as { id?: string })?.id;
+            const isSelected = selectedZoneId != null && String(fid) === selectedZoneId;
+            return isSelected
+              ? { color: "blue", fillColor: "blue", fillOpacity: 0.3, weight: 3 }
+              : { color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 };
+          }}
+        />
       ) : null}
     </MapContainer>
   );

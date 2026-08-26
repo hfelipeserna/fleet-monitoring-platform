@@ -67,7 +67,7 @@ export default function CreateZoneModal({ open, draft, onClose, onCreated }: Cre
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center" onClick={handleOverlayClick}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]" onClick={handleOverlayClick}>
       <div
         ref={dialogRef}
         tabIndex={-1}
