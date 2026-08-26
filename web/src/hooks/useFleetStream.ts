@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useFleetStore, type FleetPosition } from "../store/fleetStore";
 import { getApiBase } from "../lib/api";
 import { useSSE } from "./useSSE";
@@ -36,8 +36,38 @@ export function useFleetStream() {
   const selectedPlate = useFleetStore((s) => s.selectedPlate);
   const rawVehicles = useFleetStore((s) => s.vehicles);
   const upsertVehicle = useFleetStore((s) => s.upsertVehicle);
+  const setVehicles = useFleetStore((s) => s.setVehicles);
 
   const vehicles: FleetPosition[] = useMemo(() => Array.from(rawVehicles.values()), [rawVehicles]);
+
+  useEffect(() => {
+    const base = getApiBase();
+    const path = selectedPlate
+      ? `/api/fleet/positions?plate=${encodeURIComponent(selectedPlate)}&limit=1`
+      : `/api/fleet/positions?limit=100`;
+    const url = base ? `${base}${path}` : path;
+    let aborted = false;
+    fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`GET ${path} ${r.status}`);
+        return r.json() as Promise<{ vehicles: FleetPosition[] }>;
+      })
+      .then((data) => {
+        if (aborted) return;
+        const list = Array.isArray(data.vehicles) ? data.vehicles : [];
+        if (selectedPlate) {
+          if (list.length === 1) upsertVehicle(list[0] as FleetPosition);
+        } else {
+          setVehicles(list as FleetPosition[]);
+        }
+      })
+      .catch(() => {
+        // ignore, SSE will keep retrying; notFound handled via vehicle null
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [selectedPlate, upsertVehicle, setVehicles]);
 
   const url = useMemo(() => {
     const base = getApiBase();

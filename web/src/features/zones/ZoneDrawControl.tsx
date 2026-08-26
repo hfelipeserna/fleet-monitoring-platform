@@ -59,6 +59,14 @@ export default function ZoneDrawControl({ onDraftChange }: Props) {
       cutPolygon: false,
       removalMode: true,
     });
+    try {
+      const pmAny = map.pm as unknown as { setPathOptions?: (o: unknown) => void; setGlobalOptions?: (o: unknown) => void };
+      const redOpts = { color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 };
+      if (pmAny.setPathOptions) pmAny.setPathOptions(redOpts);
+      if (pmAny.setGlobalOptions) pmAny.setGlobalOptions({ pathOptions: redOpts, templineStyle: redOpts, hintlineStyle: redOpts });
+    } catch {
+      // ignore
+    }
 
     const handleCreate = (e: unknown) => {
       const ev = e as PmCreateEvent;
@@ -83,6 +91,12 @@ export default function ZoneDrawControl({ onDraftChange }: Props) {
       }
       if (draft) {
         draftLayerRef.current = ev.layer;
+        try {
+          const l = ev.layer as unknown as { setStyle?: (s: unknown) => void };
+          if (l.setStyle) l.setStyle({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 });
+        } catch {
+          // ignore
+        }
       } else {
         // invalid: remove visual layer so it doesn't remain as phantom draft
         try {

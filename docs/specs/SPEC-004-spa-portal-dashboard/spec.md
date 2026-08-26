@@ -131,8 +131,8 @@ Este spec pule el SPA React (Vite) para que —según las 8 maquetas entregadas�
   1. Estado `activeTop: 'monitoring'|'zones'` en Zustand/store. Default `monitoring`.
   2. `monitoring` muestra: izq búsqueda+card+Clear, der map+fleet, abajo Alerts/Chat tab.
   3. `zones` muestra: izq Zones list+Create, der Map+draft/polígonos, overlay modales. Al volver a `monitoring`, lista fleet y SSE alerts/chat se re-suscriben sin full reload.
-- **Postconditions**: Tabs top mantienen color activo negro, inactivo blanco; contenido cambia por `activeTop`.
-- **BR**: BR-014
+- **Postconditions**: Tabs top mantienen color activo negro, inactivo blanco; contenido cambia por `activeTop`. En `Monitoring` el `Map` queda **sin** overlay de zonas (aunque existan en DB); en `Critical zones` el `Map` renderiza `GeoJSON` rojo.
+- **BR**: BR-014, BR-016
 
 ## 5. Functional Requirements
 
@@ -143,13 +143,13 @@ Este spec pule el SPA React (Vite) para que —según las 8 maquetas entregadas�
 | FR-003 | Botón `Clear vehicle info` verde menta: limpia card, resetea input `""`, cierra SSE filtrado y reconecta `stream` sin `plate` para flota completa clusterizada | UC-001 | must |
 | FR-004 | `Monitoring` bottom tabs fijos: `Alerts` vs `Chat AI` — altura fija proporcional `h-[280px] lg:h-[340px]` `overflow-y:auto`, no empuja layout; `Alerts` activo por defecto, `Chat AI` muestra `ChatWidget` + input + botón azul envío | UC-002/003 | must |
 | FR-005 | `Alerts` lista consume `GET /api/alerts` SSE `alert:critical` 4 tipos con `Last-Event-ID` replay 7d, `:ping 15s`, traduce a texto humano | UC-002 | must |
-| FR-006 | `Chat AI` embebe `POST /api/chat` SPEC-003 (reply markdown + citations) en panel fijo, rate `10/min` UI feedback `429` | UC-003 | must |
+| FR-006 | `Chat AI` embebe `POST /api/chat` SPEC-003 (reply markdown) en panel fijo, rate `10/min` UI feedback `429`. **UI limpia:** `reply` solo markdown; `citations` (`listPlates 7`, `findVehiclesStoppedInCriticalZones 2`) no se pintan y el badge `ABC123` en cajón no se muestra — highlight es solo en mapa | UC-003 | must |
 | FR-007 | Top tabs `Monitoring | Critical zones` — store `activeTop`, toggle sin reload, styles activo negro `#1f2937` inactivo blanco borde negro | UC-005 | must |
-| FR-008 | `Critical zones` layout: izq `Zones list` (`overflow-y:auto` fijo) + `[Create zone]` azul; der `Map` con `GET /api/zones FeatureCollection` `GeoJSON fillOpacity 0.2` rojo | UC-004 | must |
+| FR-008 | `Critical zones` layout: izq `Zones list` (`overflow-y:auto` fijo) + `[Create zone]` azul; der `Map` con `GET /api/zones FeatureCollection` `GeoJSON fillOpacity 0.2` rojo. **Exclusivo:** overlay solo en `Critical zones`; en `Monitoring` el mapa va **sin** overlay de zonas (aunque `GET /api/zones` siga disponible para agente) | UC-004 | must |
 | FR-009 | Dibujo polígono en `Critical zones` map con `@geoman-io/leaflet-geoman-free` (o `leaflet-draw` fallback): clicks forman `Polygon closed`, draft en capa separada, `Create zone` habilitado solo con draft válido | UC-004 | must |
 | FR-010 | Modal crear: `Zone name [input] [Accept][Cancel]` centrado overlay oscuro; `Accept` -> `POST /api/zones {name[1..100], geojson Polygon 4..101 coords}`; `Cancel` descarta draft | UC-004 | must |
-| FR-011 | `Zones list` filas `Zone N` alternando verde/celeste; doble click fila -> modal `New name [prefill] [Rename][Delete][Cancel]` -> `PUT /api/zones/{id}` / `DELETE /api/zones/{id}` con refresh y error `409`/`400` inline | UC-004 | must |
-| FR-012 | Mapa Leaflet OSM directo `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png` + `MarkerClusterGroup` si >500, SSE `fleet:position` todos o filtrado por plate, tiles nunca por `/api/tiles` | UC-001/004 | must |
+| FR-011 | `Zones list` filas `Zone N` alternando verde/celeste; **click fila → selección con destaque entre dos líneas azules (`bg-blue-100 border-y-2 border-blue-500`) y filtrado del mapa a esa sola zona**; doble click fila -> modal `New name [prefill] [Rename][Delete][Cancel]` -> `PUT /api/zones/{id}` / `DELETE /api/zones/{id}` con refresh y error `409`/`400` inline | UC-004 | must |
+| FR-012 | Mapa Leaflet OSM directo `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png` + `MarkerClusterGroup` si >500, SSE `fleet:position` todos o filtrado por plate, tiles nunca por `/api/tiles`. **Visibilidad:** en `Monitoring` el `Map` **no** renderiza `GeoJSON` de `critical_zones`; en `Critical zones` sí (rojo `fillOpacity 0.2`) | UC-001/004 | must |
 
 ## 6. Business Rules
 
@@ -170,6 +170,8 @@ Este spec pule el SPA React (Vite) para que —según las 8 maquetas entregadas�
 | BR-013 | `critical_zones.geom` Polygon cerrado `4..101 coords`, `ST_IsValid`, `ST_Area>0`, SRID 4326, nombre único `409` | UC-004 FR-010/011 |
 | BR-014 | Top tabs estado `activeTop` Zustand; cambio no hace full reload ni pierde `VITE_API_BASE_URL` | UC-005 FR-007 |
 | BR-015 | Paneles fijos proporcionales: `Monitoring` izq/der `~50/50`, abajo `h-[280px] lg:h-[340px]` `overflow-y:auto`; `Critical zones` izq `~35%` lista, der `~65%` mapa | UC-002/003/004 FR-004/008 |
+| BR-016 | Aislamiento visual de zonas: `Monitoring` nunca renderiza polígonos de `critical_zones` (ni guardados ni draft); el `Map` en `Monitoring` solo muestra `vehicles`/`markers`. El overlay `GeoJSON` rojo solo vive en `Critical zones` (mantiene `GET /api/zones` como fuente única para agente) | UC-004/005 FR-008/012 |
+| BR-017 | Selección en `Zones list`: al hacer **click** en cualquier fila `Zone N`, esa fila queda **enmarcada entre dos líneas azules** (`border-y-2 border-blue-500 bg-blue-100`, `aria-selected=true`) y el mapa filtra para mostrar **solo esa zona** rojo `0.2`; sin selección muestra todas | UC-004 FR-011 |
 
 ## 7. Main Flows
 

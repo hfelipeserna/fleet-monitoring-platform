@@ -34,10 +34,16 @@ export default function EditZoneModal({ open, zone, onClose, onRenamed, onDelete
   async function handleRename() {
     const url = zoneApiUrl(`/api/zones/${zone!.id}`);
     try {
+      const geojson =
+        zone && "geometry" in zone && (zone as ZoneFeature).geometry?.coordinates
+          ? { type: "Polygon" as const, coordinates: (zone as ZoneFeature).geometry.coordinates }
+          : undefined;
+      const payload: Record<string, unknown> = { name: newName.trim() };
+      if (geojson) payload.geojson = geojson;
       const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         setError("");
@@ -79,17 +85,17 @@ export default function EditZoneModal({ open, zone, onClose, onRenamed, onDelete
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]" onClick={handleOverlayClick}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4" onClick={handleOverlayClick}>
       <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-zone-name-label"
-        className="bg-white p-4 rounded shadow-lg min-w-[300px]"
+        className="bg-white rounded-2xl border-2 border-black shadow-xl w-full max-w-[420px] p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <label id="edit-zone-name-label" htmlFor="edit-zone-name">
+        <label id="edit-zone-name-label" htmlFor="edit-zone-name" className="block text-left text-sm font-normal mb-2">
           New name
         </label>
         <input
@@ -99,20 +105,34 @@ export default function EditZoneModal({ open, zone, onClose, onRenamed, onDelete
           onChange={(e) => setNewName(e.target.value)}
           aria-invalid={!!error}
           aria-describedby={error ? "edit-zone-name-error" : undefined}
+          autoFocus
+          className="w-full rounded-lg border-2 border-black px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
         {error ? (
-          <span id="edit-zone-name-error" role="alert">
+          <span id="edit-zone-name-error" role="alert" className="mt-1 block text-sm text-red-600">
             {error}
           </span>
         ) : null}
-        <div className="flex gap-2 mt-2">
-          <button type="button" onClick={handleRename}>
+        <div className="flex justify-center gap-3 mt-6">
+          <button
+            type="button"
+            onClick={handleRename}
+            className="px-5 py-2 rounded-lg bg-cyan-200 border-2 border-black text-black text-sm font-medium hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
             Rename
           </button>
-          <button type="button" onClick={handleDelete}>
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="px-5 py-2 rounded-lg bg-red-500 border-2 border-black text-black text-sm font-medium hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
             Delete
           </button>
-          <button type="button" onClick={handleCancel}>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-5 py-2 rounded-lg bg-pink-100 border-2 border-black text-black text-sm font-medium hover:bg-pink-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300"
+          >
             Cancel
           </button>
         </div>

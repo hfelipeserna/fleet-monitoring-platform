@@ -11,9 +11,22 @@ function translate(alert: FleetAlert): string {
     case "zone_enter":
       return `${plate} entra en zona ${alert.zone_name ?? ""}`.trim();
     case "zone_exit":
-      return `${plate} sale de zona`;
+      return `${plate} sale de zona ${alert.zone_name ?? ""}`.trim();
     default:
       return "Alerta desconocida";
+  }
+}
+
+function bgFor(alert: FleetAlert): string {
+  switch (alert.alert_type) {
+    case "zone_enter":
+    case "speeding_on":
+      return "bg-red-100";
+    case "zone_exit":
+    case "speeding_off":
+      return "bg-green-100";
+    default:
+      return "bg-white";
   }
 }
 
@@ -34,7 +47,7 @@ export default function AlertsPanel({ hidden }: AlertsPanelProps) {
             <li
               key={a.event_id ?? `${a.plate}-${a.created_at}-${idx}`}
               role="listitem"
-              className="p-2 text-sm truncate break-words"
+              className={`p-2 text-sm truncate break-words ${bgFor(a)}`}
             >
               <span className="break-words">{translate(a)}</span>
               {" – "}

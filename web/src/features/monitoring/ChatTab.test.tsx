@@ -201,9 +201,8 @@ describe("ChatTab", () => {
       await waitFor(() => {
         expect(screen.getByText(/TTF678 en Zona Norte/)).toBeInTheDocument();
       });
-      expect(screen.getByText(/findVehiclesStoppedInCriticalZones/)).toBeInTheDocument();
-      // citation count visible
-      expect(document.body.textContent).toMatch(/2/);
+      expect(screen.queryByText(/findVehiclesStoppedInCriticalZones/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/listPlates/)).not.toBeInTheDocument();
       // Verifica body enviado si capturado
       if (capturedBody) {
         expect((capturedBody as Record<string, unknown>).message ?? (capturedBody as Record<string, unknown>).input).toBeDefined();

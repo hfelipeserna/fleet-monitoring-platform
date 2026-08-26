@@ -24,11 +24,13 @@ Pulir `web/` React Vite para cumplir las 8 maquetas: top tabs `Monitoring|Critic
 | FR-005 (UC-002) | Alerts lista SSE 4 tipos `alert:critical` | `AlertsPanel.tsx` + `useAlertsSSE.ts` | TEST-003 AC-004 |
 | FR-006 (UC-003) | Chat AI embed `POST /api/chat` | `ChatTab.tsx` + `chat/ChatWidget.tsx` reuse | TEST-004 AC-005 |
 | FR-007 (UC-005) | Top Monitoring\|Critical zones tabs sin reload | `App.tsx` + `portalStore.ts` `activeTop` | TEST-010 AC-011 |
-| FR-008 (UC-004) | Critical zones layout Zones list + Map GeoJSON 0.2 | `features/zones/ZonesList.tsx` + `ZonesMap.tsx` | TEST-005 AC-006 |
+| FR-008 (UC-004) | Critical zones layout Zones list + Map GeoJSON 0.2 (exclusivo: solo en `Critical zones`; `Monitoring` sin overlay zonas) | `features/zones/ZonesList.tsx` + `ZonesMap.tsx` | TEST-005 AC-006 |
 | FR-009 (UC-004) | Dibujo polígono Geoman draft -> Create zone enabled | `ZoneDrawControl.tsx` | TEST-006 AC-007 |
 | FR-010 (UC-004) | Modal crear Zone name -> POST /api/zones | `CreateZoneModal.tsx` | TEST-006/007 AC-007/ AC-008 |
-| FR-011 (UC-004) | Zones list dblclick -> modal Rename/Delete -> PUT/DELETE | `EditZoneModal.tsx` | TEST-008 AC-009 |
-| FR-012 (UC-001/004) | Leaflet OSM directo + cluster >500 | `map/Map.tsx` reuse | TEST-009 AC-010 / TEST-011 AC-012 |
+| FR-011 (UC-004) | Zones list click selección (dos líneas azules) + dblclick -> modal Rename/Delete -> PUT/DELETE | `ZonesList.tsx` + `EditZoneModal.tsx` | TEST-008 AC-009 |
+| FR-012 (UC-001/004) | Leaflet OSM directo + cluster >500; `Monitoring` Map sin GeoJSON, `Critical zones` Map con GeoJSON rojo | `map/Map.tsx` + `App.tsx` condicional `activeTop` | TEST-009 AC-010 / TEST-011 AC-012 |
+| BR-016 (UC-004/005) | Aislamiento visual: `Monitoring` nunca muestra polígonos `critical_zones` | `App.tsx` `displayZones = activeTop!=='zones'? null : zones` | TEST-010 AC-011 |
+| BR-017 (UC-004) | Selección: click fila Zone N → `border-y-2 border-blue-500 bg-blue-100 aria-selected` y mapa filtra a esa zona | `ZonesList.tsx` + `App.tsx` `selectedZoneId` | TEST-005/008 AC-006/009 |
 | BR-001..015 | reglas status, regex, fixed height, habilitado draft etc. (sequencial) | domain-less React guards | AC trace |
 
 ## 3. Technical Context
@@ -79,8 +81,8 @@ Particionado futuro >10k markers MapLibre vector reservado ADR-0007 cond.6; no a
   - `App.tsx`: header `FLEET MONITORING PLATFORM` + `<TopTabs value={activeTop}>` negro activo `#1f2937`. Contenido `activeTop==='monitoring'` -> `grid lg:grid-cols-2 gap-4` izq `VehicleSearch+Card+Clear` der `Map filtered`, abajo ` <BottomTabs>` `Alerts`/`Chat AI` `className="h-[280px] lg:h-[340px] overflow-y-auto border rounded"` proporcional maquetas. `activeTop==='zones'` -> `grid lg:grid-cols-[35%_65%]`.
 
 - **Componente `Zones` (`features/zones`)**:
-  - `ZonesList.tsx`: `GET /api/zones` via `useQuery` o `useEffect fetch ${base}/api/zones`, `zones.features.map((f,i)=> <div onDoubleClick(()=>openEdit(f)) className={i%2===0?'bg-emerald-100':'bg-cyan-100'}>{f.properties.name}</div>)` container `h-[360px] lg:h-[480px] overflow-y-auto`. Doble click abre `EditZoneModal`.
-  - `ZonesMap.tsx`: envuelve `Map.tsx` con `GeoJSON data={zones} style={{color:'red', fillOpacity:0.2}}` + `ZoneDrawControl`. Si `activeTop==='zones'` montar Geoman.
+   - `ZonesList.tsx`: `GET /api/zones` via `useQuery` o `useEffect fetch ${base}/api/zones`, `zones.features.map((f,i)=> <div onDoubleClick(()=>openEdit(f)) className={i%2===0?'bg-emerald-100':'bg-cyan-100'}>{f.properties.name}</div>)` container `h-[360px] lg:h-[480px] overflow-y-auto`. Doble click abre `EditZoneModal`.
+   - `ZonesMap.tsx` / `App.tsx`: envuelve `Map.tsx` con `GeoJSON data={zones} style={{color:'red', fillOpacity:0.2}}` + `ZoneDrawControl`. **Solo si `activeTop==='zones'`** montar `GeoJSON` y Geoman; en `Monitoring` `Map` recibe `features:[]` (aislamiento BR-016). Implementado como `displayZones = activeTop!=='zones'? {features:[]} : zones` en `App.tsx`.
   - `ZoneDrawControl.tsx`: `useMap()` -> `map.pm.addControls({drawPolygon:true, editMode:false, cutPolygon:false, removalMode:true})`, `map.on('pm:create', e=>{ if(e.shape==='Polygon'){ const gj=e.layer.toGeoJSON(); const coords=gj.geometry.coordinates; const draft=gj.geometry; setDraftPolygon(draft as any); map.removeLayer(e.layer); addDraftLayer(draft); }})`, `pm:remove` limpia `draftPolygon` y deshabilita botón. Validación cliente `coords[0].length>=4 && coords[0].length<=101 && first==last` else hint.
   - `CreateZoneModal.tsx`: `props open, draft, onClose, onCreated`. `if(!open) return null` Portal `role=dialog aria-modal`. Input `value name`, `error` state. `Accept disabled={!name.trim() || !draft}` -> `POST /api/zones {name: name.trim(), geojson:{type:"Polygon", coordinates: draft.coordinates}}` con `getApiBase()`, handle `201` -> `onCreated -> GET /api/zones refresh` + `setDraftPolygon(null)` + `removeDraftLayer`, `409` -> `setError("zone name already exists")` bajo input, `400` -> `setError(details)`. `Cancel` -> `onClose` sin POST pero **no** limpia draft salvo que se quiera; spec dice descarta draft -> `removeDraftLayer` + `setDraftPolygon(null)`.
   - `EditZoneModal.tsx`: `props zone, open, onClose`. Input `prefill zone.properties.name`, botones `Rename` -> `PUT /api/zones/${zone.id} {name}` (conserva `geojson` original fetched), `Delete` -> `DELETE /api/zones/${id}`, `Cancel`. Mismos errores `409/400/404`.

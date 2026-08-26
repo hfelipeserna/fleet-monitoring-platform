@@ -9,9 +9,11 @@ export async function parseZoneApiError(res: Response): Promise<string> {
   let msg = "";
   try {
     const data = (await res.json()) as { error?: string; details?: string[]; message?: string };
-    if (data?.details && Array.isArray(data.details)) msg = data.details.join(", ");
-    else if (data?.error) msg = data.error;
+    if (data?.details && Array.isArray(data.details) && data.details.length) msg = data.details.join(", ");
     else if (data?.message) msg = data.message;
+    else if (data?.error) msg = data.error;
+    if (data?.error === "validation" && data?.message && msg === data.error) msg = data.message;
+    if (msg === "validation" && data?.message) msg = data.message;
   } catch {
     msg = "";
   }

@@ -1,6 +1,5 @@
 import ReactMarkdown from "react-markdown";
 import type { ChatMessage } from "./useChatMessages";
-import { CitationList } from "./CitationList";
 import styles from "./ChatWidget.module.css";
 
 export function MessageItem({ message }: { message: ChatMessage }) {
@@ -18,7 +17,6 @@ export function MessageItem({ message }: { message: ChatMessage }) {
       ) : (
         <span>{message.content}</span>
       )}
-      {message.citations ? <CitationList citations={message.citations} /> : null}
     </div>
   );
 }

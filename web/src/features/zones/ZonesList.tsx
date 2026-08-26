@@ -1,15 +1,19 @@
 import { useZones } from "./useZones";
-import type { ZoneFeature } from "./types";
+import type { ZoneFeature, ZonesFC } from "./types";
 import { ZONES_PANEL_FIXED } from "../../lib/ui";
 
 type ZonesListProps = {
+  zones?: ZonesFC;
+  error?: string | null;
   onEdit?: (zone: ZoneFeature) => void;
   onSelect?: (id: string | null) => void;
   selectedId?: string | null;
 };
 
-export default function ZonesList({ onEdit, onSelect, selectedId }: ZonesListProps) {
-  const { zones, error } = useZones();
+export default function ZonesList({ zones: zonesProp, error: errorProp, onEdit, onSelect, selectedId }: ZonesListProps) {
+  const fallback = useZones();
+  const zones = zonesProp ?? fallback.zones;
+  const error = errorProp !== undefined ? errorProp : fallback.error;
 
   if (error) {
     return (
@@ -30,7 +34,7 @@ export default function ZonesList({ onEdit, onSelect, selectedId }: ZonesListPro
       {zones.features.map((f, i) => {
         const isSelected = selectedId != null && String(f.id) === selectedId;
         const base = i % 2 === 0 ? "bg-emerald-100" : "bg-cyan-100";
-        const selectedCls = isSelected ? " bg-blue-200 ring-2 ring-blue-500" : "";
+        const selectedCls = isSelected ? " bg-blue-100 border-y-2 border-blue-500" : " border-y-2 border-transparent";
         return (
           <div
             key={String(f.id)}

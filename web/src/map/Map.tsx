@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from "react-leaflet";
+import { usePortalStore } from "../store/portalStore";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -39,9 +40,38 @@ function Recenter({ vehicle }: { vehicle?: Vehicle | null }) {
   const map = useMap();
   useEffect(() => {
     if (vehicle && typeof vehicle.lat === "number" && typeof vehicle.lon === "number") {
-      map.setView([vehicle.lat, vehicle.lon], 14);
+      const currentZoom = map.getZoom();
+      const targetZoom = Number.isFinite(currentZoom) ? currentZoom : 14;
+      if (map.getCenter().distanceTo([vehicle.lat, vehicle.lon] as never) < 1) return;
+      map.setView([vehicle.lat, vehicle.lon], targetZoom, { animate: true });
     }
   }, [vehicle, map]);
+  return null;
+}
+
+function InvalidateSize() {
+  const map = useMap() as unknown as { invalidateSize?: () => void };
+  const activeTop = usePortalStore((s) => s.activeTop);
+  useEffect(() => {
+    const safe = () => {
+      try {
+        map.invalidateSize?.();
+      } catch {
+        // ignore in jsdom
+      }
+    };
+    const t1 = window.setTimeout(safe, 80);
+    const t2 = window.setTimeout(safe, 300);
+    const t3 = window.setTimeout(safe, 600);
+    const onResize = safe;
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [map, activeTop]);
   return null;
 }
 
@@ -60,8 +90,9 @@ export default function Map({ vehicles = [], zones, selectedVehicle, selectedZon
       className="leaflet-container h-full w-full"
       data-testid="map"
     >
-      <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' />
+      <TileLayer url={OSM_TILE_URL} attribution='&copy; OpenStreetMap contributors' keepBuffer={2} updateWhenIdle={false} updateWhenZooming />
       <Recenter vehicle={selectedVehicle} />
+      <InvalidateSize />
       {children}
       {markers.length > 500 ? (
         <MarkerClusterGroup chunkedLoading>
@@ -78,13 +109,7 @@ export default function Map({ vehicles = [], zones, selectedVehicle, selectedZon
         <GeoJSON
           key={selectedZoneId ?? "all"}
           data={displayZones as never}
-          style={(feature) => {
-            const fid = (feature as unknown as { id?: string })?.id;
-            const isSelected = selectedZoneId != null && String(fid) === selectedZoneId;
-            return isSelected
-              ? { color: "blue", fillColor: "blue", fillOpacity: 0.3, weight: 3 }
-              : { color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 };
-          }}
+          style={() => ({ color: "red", fillColor: "red", fillOpacity: 0.2, weight: 2 })}
         />
       ) : null}
     </MapContainer>

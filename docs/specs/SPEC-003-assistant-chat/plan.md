@@ -94,7 +94,7 @@ Particionado futuro >10k msg/s ya documentado ADR-0001 cond. 7; hasta entonces m
         return roundAndMinimize(rows) // 3 dec, sin PII
     })
     ```
-    `getFleetSummary`, `getVehicleStatus`, `getActiveAlerts` similares; `validateAllowlist` lee `jwtClaims` del `ctx` (propagado por BFF) y verifica `zoneID` pertenece a flota del usuario (si JWT presente; si no, allowlist = todas las zonas en MVP). Todas consultan `fleet` ports, nunca `pgx` directo ni concatenan SQL del LLM (parametrizado `$1,$2`).
+    `getFleetSummary`, `getVehicleStatus` (**devuelve `lat, lon, speed, received_at, status` y el flow compone `Vehículo LMN456 estado en movimiento, última posición lat 4.710000 lon -74.070000 recibida 2026-08-25T09:41:10Z velocidad 45 km/h`**), `getActiveAlerts` similares; `validateAllowlist` lee `jwtClaims` del `ctx` (propagado por BFF) y verifica `zoneID` pertenece a flota del usuario (si JWT presente; si no, allowlist = todas las zonas en MVP). Todas consultan `fleet` ports, nunca `pgx` directo ni concatenan SQL del LLM (parametrizado `$1,$2`).
   - Guardrails (cond. 5): `guard.go` valida `message` antes de LLM, `breaker` `sony/gobreaker` con `Name:"gemini"` settings `MaxRequests:1, Interval:30s, Timeout:30s, ReadyToTrip: func(c Counts){return c.TotalRequests>=5 && c.ConsecutiveFailures>=3 || failureRatio>=0.5}`, `semaphore := make(chan struct{}, 20)` (o `golang.org/x/sync/semaphore`) en `flow.go` para cap concurrencia global; `context.WithTimeout 15s` con `defer cancel()` y `select {case <-ctx.Done(): return ErrTimeout}`.
   - Output filtering (`guard.go` post-LLM): `filterOutput(reply) string` con `strings.ReplaceAll` + regex para `GEMINI_API_KEY`, `DATABASE_URL`, `BEGIN;|DROP TABLE|SELECT \*|INSERT INTO`, `sk-[a-zA-Z0-9]{20,}`, `eyJ[A-Za-z0-9_-]+\.` (JWT) — si detecta, reemplaza por `"[filtrado]"` y log `slog.Warn` sin contenido original.
   - Persistencia: sin tabla nueva; si `GENKIT_ENV=dev` habilita `genkit dev` tracing local, no en prod.
@@ -109,8 +109,8 @@ Particionado futuro >10k msg/s ya documentado ADR-0001 cond. 7; hasta entonces m
 - **Componente `NATS ALERTS infra` (`backend/internal/fleet/infra/nats/stream.go` reuse):**
   - `getActiveAlerts` opcional lee `ALERTS` via `AlertSubscriber` durable `agent-alerts` `AckNone` o directamente `SELECT` si alertas persisten en DB; por defecto usa `fleet` DB view de `telemetry` recientes, no NATS publish.
 
-- **Componente `Web SPA Chat` (`web/src/chat/ChatWidget.tsx`):**
-  - `fetch POST /api/chat {message}` con `AbortController` timeout 15s, `useState` historial `[{role:"user"|"assistant", content, citations}]`, `onError` backoff, `markdown` render con `react-markdown` sin `dangerouslySetInnerHTML`, `highlight` plate en mapa vía `zustand` store `setSelectedPlate`.
+ - **Componente `Web SPA Chat` (`web/src/chat/ChatWidget.tsx`):**
+   - `fetch POST /api/chat {message}` con `AbortController` timeout 15s, `useState` historial `[{role:"user"|"assistant", content, citations}]`, `onError` backoff, `markdown` render con `react-markdown` sin `dangerouslySetInnerHTML`, `highlight` plate en mapa vía `zustand` store `setSelectedPlate`. **UI limpia:** solo `reply` markdown se pinta; `citations` (`listPlates 7`, `findVehicles... 2`) y el badge `ABC123` en cajón **no se renderizan** (se mantiene `citations` en payload para trazabilidad, y el highlight es solo en Leaflet).
   - Env `VITE_API_BASE_URL` reuse, sin `VITE_GEMINI_API_KEY`.
 
 - **Dependencias**: `google/genkit` `googlegenai`, `jackc/pgx/v5/pgxpool`, `sony/gobreaker`, `golang.org/x/time/rate`, `postgis`, `leaflet` (solo para highlight), `react-markdown`.

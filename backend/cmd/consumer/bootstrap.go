@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/sony/gobreaker"
 
+	fleetapp "fleetmonitoring/backend/internal/fleet/application"
+	fleet "fleetmonitoring/backend/internal/fleet/domain"
+	fleetpg "fleetmonitoring/backend/internal/fleet/adapters/pg"
 	"fleetmonitoring/backend/internal/telemetry/adapters/pg"
 	"fleetmonitoring/backend/internal/telemetry/application"
 	"fleetmonitoring/backend/internal/telemetry/infra/breaker"
@@ -134,6 +138,51 @@ func bootstrapConsumer(writer application.TelemetryWriter, js nats.JetStreamCont
 	consumer := application.NewConsumer(writer, jetPublisher, opts)
 	_ = infranats.EnsureConsumer(js, opts)
 	return consumer, opts
+}
+
+type jsPublisher struct {
+	js nats.JetStreamContext
+}
+
+func (p *jsPublisher) Publish(ctx context.Context, alert fleet.Alert) error {
+	payload, err := json.Marshal(alert)
+	if err != nil {
+		return fmt.Errorf("marshal alert: %w", err)
+	}
+	msgID := alert.MsgID()
+	_, err = p.js.Publish("alerts.critical", payload, nats.MsgId(msgID))
+	if err != nil {
+		return fmt.Errorf("publish alert: %w", err)
+	}
+	return nil
+}
+
+func ensureAlertsStreamJS(js nats.JetStreamContext) {
+	_, err := js.StreamInfo("ALERTS")
+	if err == nil {
+		return
+	}
+	_, _ = js.AddStream(&nats.StreamConfig{
+		Name:       "ALERTS",
+		Subjects:   []string{"alerts.critical"},
+		Storage:    nats.FileStorage,
+		Retention:  nats.LimitsPolicy,
+		Discard:    nats.DiscardOld,
+		MaxAge:     7 * 24 * time.Hour,
+		MaxBytes:   1 * 1024 * 1024 * 1024,
+		Duplicates: 2 * time.Minute,
+	})
+}
+
+func bootstrapAlertDetector(pool *pgxpool.Pool, js nats.JetStreamContext) *fleetapp.AlertDetector {
+	ensureAlertsStreamJS(js)
+	publisher := &jsPublisher{js: js}
+	adapter := fleetpg.NewPgxPoolAdapter(pool)
+	resolver := fleetpg.NewPGZoneResolver(adapter)
+	zoneBreaker := newZoneResolverBreaker()
+	resolverWithBreaker := fleetpg.NewZoneResolverWithBreaker(resolver, zoneBreaker, 2*time.Second)
+	detector := fleetapp.NewAlertDetector(publisher, resolverWithBreaker)
+	return detector
 }
 
 func bootstrapDLQ(js nats.JetStreamContext) *infranats.DLQJetStream {

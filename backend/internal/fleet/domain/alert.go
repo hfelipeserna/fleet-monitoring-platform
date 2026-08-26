@@ -14,14 +14,15 @@ const (
 )
 
 type Alert struct {
-	EventID   string
-	Plate     string
-	AlertType string
-	ZoneID    *string
-	Lat       *float64
-	Lon       *float64
-	Speed     int
-	CreatedAt time.Time
+	EventID   string    `json:"event_id"`
+	Plate     string    `json:"plate"`
+	AlertType string    `json:"alert_type"`
+	ZoneID    *string   `json:"zone_id"`
+	ZoneName  *string   `json:"zone_name"`
+	Lat       *float64  `json:"lat"`
+	Lon       *float64  `json:"lon"`
+	Speed     int       `json:"speed"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func BucketFor(alertType string, t time.Time) int64 {

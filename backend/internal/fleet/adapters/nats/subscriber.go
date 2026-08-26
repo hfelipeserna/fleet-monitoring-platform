@@ -37,7 +37,7 @@ func (s *AlertSubscriber) SubscribeAlerts(ctx context.Context, lastSeq uint64) (
 		return nil, nil, fmt.Errorf("subscribe alerts breaker open: %w", gobreaker.ErrOpenState)
 	}
 	ch := make(chan sse.AlertMsg, sseBufferSize)
-	opts := []nats.SubOpt{nats.Durable("api-sse-alerts"), nats.AckNone()}
+	opts := []nats.SubOpt{nats.AckNone()}
 	if lastSeq == 0 {
 		opts = append(opts, nats.DeliverAll())
 	} else {

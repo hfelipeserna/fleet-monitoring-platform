@@ -97,6 +97,45 @@ function MonitoringLeft({
   );
 }
 
+function BottomTabs({
+  activeBottom,
+  onChange,
+}: {
+  activeBottom: string;
+  onChange: (v: "alerts" | "chat") => void;
+}) {
+  return (
+    <div role="tablist" aria-label="Alertas y Chat" className="flex justify-center gap-2 mt-3 mb-2">
+      <button
+        type="button"
+        role="tab"
+        id="tab-alerts"
+        aria-controls="panel-alerts"
+        aria-selected={activeBottom === "alerts"}
+        onClick={() => onChange("alerts")}
+        className={`px-6 py-1.5 text-sm font-medium rounded-lg border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+          activeBottom === "alerts" ? "bg-cyan-200 border-black text-black" : "bg-white border-black text-black hover:bg-gray-50"
+        }`}
+      >
+        Alerts
+      </button>
+      <button
+        type="button"
+        role="tab"
+        id="tab-chat"
+        aria-controls="panel-chat"
+        aria-selected={activeBottom === "chat"}
+        onClick={() => onChange("chat")}
+        className={`px-6 py-1.5 text-sm font-medium rounded-lg border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+          activeBottom === "chat" ? "bg-cyan-200 border-black text-black" : "bg-white border-black text-black hover:bg-gray-50"
+        }`}
+      >
+        Chat AI
+      </button>
+    </div>
+  );
+}
+
 function MonitoringBottom({ activeBottom }: { activeBottom: string }) {
   return (
     <div className="border-t border-gray-200 bg-white">
@@ -108,11 +147,12 @@ function MonitoringBottom({ activeBottom }: { activeBottom: string }) {
 
 export default function App() {
   const { vehicles, vehicle, selectedPlate } = useFleetStream();
-  const { zones, refetch: refetchZones } = useZones();
+  const { zones, error: zonesError, refetch: refetchZones } = useZones();
   const setSelectedPlate = useFleetStore((s) => s.setSelectedPlate);
   const activeTop = usePortalStore((s) => s.activeTop);
   const activeBottom = usePortalStore((s) => s.activeBottom);
   const setActiveTop = usePortalStore((s) => s.setActiveTop);
+  const setActiveBottom = usePortalStore((s) => s.setActiveBottom);
   const draftPolygon = usePortalStore((s) => s.draftPolygon);
   const setDraftPolygon = usePortalStore((s) => s.setDraftPolygon);
   const selectedZoneId = usePortalStore((s) => s.selectedZoneId);
@@ -120,9 +160,13 @@ export default function App() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editZone, setEditZone] = useState<ZoneFeature | null>(null);
   const notFound = !!selectedPlate && vehicles.length > 0 && vehicle === null;
-  const displayZones = selectedZoneId
-    ? { type: "FeatureCollection" as const, features: zones.features.filter((f) => String(f.id) === selectedZoneId) }
-    : zones;
+  const displayVehicles = selectedPlate ? (vehicle ? [vehicle] : vehicles) : vehicles;
+  const displayZones =
+    activeTop !== "zones"
+      ? null
+      : selectedZoneId
+        ? { type: "FeatureCollection" as const, features: zones.features.filter((f) => String(f.id) === selectedZoneId) }
+        : zones;
 
   function handleClear() {
     setSelectedPlate(null);
@@ -156,18 +200,23 @@ export default function App() {
           aria-labelledby="tab-zones"
           className={activeTop !== "zones" ? "hidden" : `${ZONES_PANEL_FIXED} flex flex-col`}
         >
-          <ZonesList onEdit={(z) => setEditZone(z)} onSelect={(id) => setSelectedZoneId(id)} selectedId={selectedZoneId} />
+          <ZonesList zones={zones} error={zonesError} onEdit={(z) => setEditZone(z)} onSelect={(id) => setSelectedZoneId(id)} selectedId={selectedZoneId} />
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
             disabled={draftPolygon == null}
-            className="mt-2 px-3 py-1 border border-black disabled:opacity-50"
+            aria-disabled={draftPolygon == null}
+            className={`mt-2 w-full rounded px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-800 focus-visible:ring-offset-2 ${
+              draftPolygon
+                ? "bg-blue-800 text-white hover:bg-blue-900 border border-blue-900"
+                : "bg-white text-gray-400 border border-gray-300 cursor-not-allowed opacity-60"
+            }`}
           >
             Create zone
           </button>
         </div>
         <div className="flex-1 relative min-h-[300px]">
-          <Map vehicles={vehicles} selectedVehicle={vehicle} zones={displayZones} selectedZoneId={selectedZoneId}>
+          <Map vehicles={displayVehicles} selectedVehicle={vehicle} zones={displayZones} selectedZoneId={selectedZoneId}>
             {activeTop === "zones" ? <ZoneDrawControl /> : null}
           </Map>
         </div>
@@ -176,9 +225,12 @@ export default function App() {
       <div
         hidden={activeTop !== "monitoring"}
         aria-hidden={activeTop !== "monitoring" ? "true" : undefined}
-        className={activeTop !== "monitoring" ? "hidden" : ""}
+        className={activeTop !== "monitoring" ? "hidden" : "flex flex-col"}
       >
-        <MonitoringBottom activeBottom={activeBottom} />
+        <BottomTabs activeBottom={activeBottom} onChange={setActiveBottom} />
+        <div className="flex-1 min-h-0">
+          <MonitoringBottom activeBottom={activeBottom} />
+        </div>
       </div>
 
       <CreateZoneModal
