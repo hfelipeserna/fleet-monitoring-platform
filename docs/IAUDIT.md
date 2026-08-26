@@ -271,6 +271,62 @@ Por qué falla: Feature GREEN falso (tests aislados pasan pero portal no crea/ed
 Refactor exigido: `App` eleva `createOpen/editZone` + monta ambos modales con `onClose/onCreated/onRenamed/onDeleted → useZones refetch`, `lib/useDialogFocus` hook trap Tab/Esc + restore focus, `isAcceptDisabled=!name.trim()||!draft`, `api.ts parseZoneApiError/zoneApiUrl` DRY, `useEffect reset name/error` al abrir. `109/109 pass` re-auditoría 0 altas/medias.
 Auditor: quality-auditor | frontend-auditor | architect
 
+## 2026-08-26 — Auditoría: reviewer clean architecture + error wrap + secrets [SPEC-004]
+Severidad: media
+Hallazgo: IA dejó default DSN `postgres://fleet:fleet@localhost` en `consumer/bootstrap.go:41` y `backend/.golangci.yml` sin `pg_advisory_lock` runner; `gitleaks.toml` allowlist incompleta para `AQ.`/`sk-`; `specs/**/plan.md` referenciaban IAUDIT rompiendo trazabilidad unidireccional (ADRs deben ser fuente).
+Evidencia: backend/cmd/consumer/bootstrap.go:41, docs/specs/SPEC-003/plan.md:318, docs/specs/SPEC-004/plan.md:277, reviewer ses_fc01814
+Por qué falla: Viola AGENTS.md `domain → application → adapters → infra` y skill `ai-audit` trazabilidad unidireccional; default DSN expone password dummy en imagen si env no seteada.
+Refactor exigido: Cambiar default DSN a `""` fail-closed y documentar rotación `change-me-local` vía secrets manager; reescribir `plan.md` referencias hacia ADRs/commits en vez de IAUDIT; mantener `gitleaks` con reglas `AQ\.` y `sk-`. Commit 808132e (no bloqueante, deuda media).
+Auditor: reviewer | architect
+
+## 2026-08-26 — Auditoría: security 3 altas (secretos, GPS sin auth, ingesta spoofing) [SPEC-004]
+Severidad: alta
+Hallazgo: IA propuso `.env` con `GEMINI_API_KEY` real en disco + `GET /api/fleet/positions` sin JWT + `POST /v1/telemetry` sin HMAC; TLS `sslmode=disable` y `nats://` sin TLS.
+Evidencia: .env:22 `GEMINI_API_KEY=AQ...`, backend/cmd/api/bootstrap.go:208 mux sin auth, backend/internal/telemetry/adapters/http/ingest.go:19 sin token, docker-compose.yml:28 `sslmode=disable`, security ses_fc016769
+Por qué falla: OWASP A07 Secrets, A01 Broken Access Control (GPS PII), A02 Crypto Failure; ingesta sin auth permite spoofing y alertas falsas.
+Refactor exigido: Para MVP local deuda aceptada (AGENTS.md 16GB, ADR-0009 riesgo anónimo documentado, 127.0.0.1 binding, `GENKIT_ENV=dev` guard); prod exige JWT `ValidateAllowlist` + `X-Device-Token` HMAC + `sslmode=require` + NATS TLS. Rotar keys y borrar `.env.save`. No bloquea commit demo.
+Auditor: security | architect
+
+## 2026-08-26 — Auditoría: scalability 3k msg/s con NATS 5GB y single writer [SPEC-002]
+Severidad: media
+Hallazgo: IA dimensionó NATS `MAX_BYTES 5GB DiscardOld 24h` para 3k msg/s → retiene 1.15h luego `DiscardOld` pérdida silenciosa; `consumer` single replica + `telemetry_dedup` sin retention 8GB/día bloat; falta `continuous aggregate` y `compression_policy`.
+Evidencia: infra/nats/stream.go:7 `Duplicates 2m`, docker-compose.yml:175 `JETSTREAM_MAX_BYTES 5368709120`, backend/internal/fleet/adapters/pg/reader.go:90 `COUNT(*)`, scalability ses_fc014a6c
+Por qué falla: A 3k msg/s (15k disp @5s) stream 103GB/día, DB 38GB/día raw → 27GB/semana comprimido; sin `add_compression_policy(7d)` y `add_retention_policy(90d)` crece O(GB/día) y `GetFleetSummary COUNT(*)` escanea chunks.
+Refactor exigido: Para MVP 67-200 msg/s (1k disp) mononodo correcto; para 3k escalar a `MAX_BYTES 50GB`, `NATS_MAX_PENDING 4096`, `consumer replicas 2`, `dedup retention 30d`, `compression 7d`, `continuous aggregate last_position`. Documentado como deuda escalabilidad, no bloquea demo.
+Auditor: scalability | architect
+
+## 2026-08-26 — Auditoría: db keyset OR vs tupla + COUNT(*) hot path [SPEC-002]
+Severidad: alta
+Hallazgo: IA implementó paginación `WHERE (plate > $1 OR (plate=$1 AND received_at < $2))` con `OR` que impide `Index Scan` en `(plate, received_at DESC)` → `BitmapOr` O(n) 300ms vs 5ms; y `GetFleetSummary` con `COUNT(*) WHERE received_at > now()-5m` sin índice BRIN escanea hypertable por request.
+Evidencia: backend/internal/fleet/adapters/pg/reader.go:96, backend/cmd/agent/bootstrap.go:249 `SELECT count(*)`, db-auditor ses_fc0126be
+Por qué falla: Violación NFR-001 p95 <150ms y Timescale best practice; `COUNT(*)` en hot path chat amplifica con 10 RPM.
+Refactor exigido: Cambiar a `WHERE (plate, received_at) < ($1,$2)` tupla con `ORDER BY plate ASC, received_at DESC`; reemplazar `COUNT(*)` por `continuous aggregate telemetry_5m` o cache TTL 30s; añadir `telemetry_received_at_brin`. Deuda media/alta aprobada para MVP, exigir `db-auditor` gate antes de cierre SPEC-002/003.
+Auditor: db-auditor | architect
+
+## 2026-08-26 — Auditoría: quality hot path leak + dedup contención [SPEC-004]
+Severidad: alta
+Hallazgo: IA lanzó `go d.StartCleanup(Background)` nunca cancelable (leak 1 goroutine/detector) y `isDupLocked` escanea `dedup` map 10k entries bajo `mu.Lock()` con check-then-act publish fuera de lock → race duplicados y O(n) contención a 1000 msgs/s.
+Evidencia: backend/internal/fleet/application/alert.go:64,98-110, web/src/store/fleetStore.ts:25 `new Map` O(N) por SSE, quality-auditor ses_fc00fef3
+Por qué falla: Resource leak y contención hot path NFR-002; `upsertVehicle` copia `Map` 10k*400/s =4M copias/s.
+Refactor exigido: Eliminar `go` del constructor, exigir `ctx` externo + `Stop()` con `goleak`; mover evicción a `sync.Map` + TTL heap O(log n) y dedup atómico `check+insert` bajo lock antes de publish; frontend usar `immer` o `Map.set` O(1). Deuda alta bloquea done si flota >1k.
+Auditor: quality-auditor | architect
+
+## 2026-08-26 — Auditoría: frontend bundle + panel fijo + re-render [SPEC-004]
+Severidad: alta
+Hallazgo: IA generó bundle monolítico 765k sin `lazy`/`manualChunks`, `ChatWidget.module.css` con `overflow-y: visible` rompe `h-[280px] lg:h-[340px] overflow-y-auto`, y `fleetStore` con `new Map` + `Array.from` remonta 5k markers por cada `fleet:position`.
+Evidencia: web/vite.config.ts, web/src/chat/ChatWidget.module.css:2, web/src/store/fleetStore.ts:25, frontend-auditor ses_fc00e133
+Por qué falla: Viola Figma fidelidad BR-015 y performance NFR-002; TTI >3s móvil, panel crece infinito, main thread bloqueado.
+Refactor exigido: `React.lazy` Map + `manualChunks` leaflet/geoman/markdown, `ChatWidget.module.css` a `overflow-y-auto max-h-[220px]`, `useFleetStore` selectores granulares + `React.memo` Map. Deuda alta para flota >500.
+Auditor: frontend-auditor | architect
+
+## 2026-08-26 — Auditoría: alerts SSE fan-out + JSON snake_case + zone_name [SPEC-002/004]
+Severidad: alta
+Hallazgo: IA dejó `AlertDetector` sin cablear en `cmd/consumer` (ALERTS 0 msgs), `Alert` con `json:"AlertType"` PascalCase vs frontend `alert_type`, y `AlertSubscriber` con `Durable("api-sse-alerts")` compartido → load-balance no broadcast, más `translate` para `zone_exit` sin `zone_name`.
+Evidencia: backend/cmd/consumer/main.go:37 sin detector, backend/internal/fleet/domain/alert.go:16 sin tags, backend/internal/fleet/adapters/nats/subscriber.go:40 `Durable`, web/src/features/monitoring/AlertsPanel.tsx:14, auditorías 2026-08-26 manual
+Por qué falla: `speeding_on/off` y `zone_enter/exit` nunca llegaban a `AlertsPanel` (SSE vacío) y `HYU456 entra en zona` sin nombre; viola SPEC-002 FR-005/006 y FR-011.
+Refactor exigido: Cableado `consumer.WithAlertProcessor(detector)` con `jsPublisher` + `PGZoneResolver` + breaker, `Alert` con `json:"alert_type"` etc. + `ZoneName`, `subscriber` efímero sin Durable (broadcast), `AlertsPanel` con `bg-red-100`/`bg-green-100` y `zone_exit` con nombre. Verificado `ALERTS:5` con `zone_name:"Rafael Uribe"` y SSE `id:13 speeding_on`. Commit 808132e.
+Auditor: architect | reviewer
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
