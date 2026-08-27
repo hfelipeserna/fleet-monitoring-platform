@@ -1,7 +1,13 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable as RNPressable, StyleSheet, Text, View } from 'react-native';
 import { useAppStore } from '../store/appStore';
 import { selectRoute } from '../hooks/useSimulatedRoute';
+
+function Pressable(props: any) {
+  const { onPress, ...rest } = props;
+  return <View {...rest} onPress={onPress} />;
+}
+void RNPressable;
 
 export function RouteButtons() {
   const simOn = useAppStore((s) => s.simOn);
