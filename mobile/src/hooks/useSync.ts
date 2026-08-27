@@ -64,6 +64,11 @@ export function useSync(): void {
       } catch (e: unknown) {
         const err = e as { name?: string; retryAfter?: number; status?: number; backoffMs?: number };
         if (controller.signal.aborted || err?.name === 'AbortError') return;
+        if (err?.status === 503) {
+          try {
+            useAppStore.getState().setSync('ERROR');
+          } catch {}
+        }
         if (err?.status === 429 || err?.status === 503 || typeof err?.retryAfter === 'number') {
           retryAttemptsRef.current += 1;
           const jitter = Math.random() * 1000;

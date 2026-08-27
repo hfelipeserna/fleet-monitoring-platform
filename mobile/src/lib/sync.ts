@@ -1,6 +1,7 @@
 import { postBatch } from './api';
 import { getTelemetryPort } from '../store/ports';
 import type { TelemetryPort } from '../store/ports';
+import { useAppStore } from '../store/appStore';
 
 let globalAttempts = 0;
 
@@ -21,10 +22,10 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
 
   let pending: any[];
   if (port?.getPending) {
-    pending = await port.getPending(500);
+    pending = await port.getPending(50);
   } else {
     const mod = await import('../db/telemetry');
-    pending = await mod.getPending(500);
+    pending = await mod.getPending(50);
   }
 
   if (!pending || pending.length === 0) return 0;
@@ -33,7 +34,7 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  const events = pending.slice(0, 500).map((p: any) => ({
+  const events = pending.slice(0, 50).map((p: any) => ({
     plate: p.plate,
     lat: p.lat ?? null,
     lon: p.lon ?? null,
@@ -65,6 +66,9 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
       const mod = await import('../db/telemetry');
       await mod.markSynced(ids);
     }
+    try {
+      useAppStore.getState().setSync('CONNECTED');
+    } catch {}
     return accepted;
   }
 
@@ -75,6 +79,7 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
       const parsed = parseInt(headerVal, 10);
       if (!Number.isNaN(parsed) && parsed > 0) retryAfter = parsed;
     }
+    const prevAttempts = globalAttempts;
     globalAttempts += 1;
     const lastError = `${res.status} backpressure`;
     const ids = pending.map((p: any) => p.client_event_id ?? p.clientEventId ?? p.id);
@@ -101,8 +106,14 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
       }
     } catch {}
 
+    if (res.status === 503) {
+      try {
+        useAppStore.getState().setSync('ERROR');
+      } catch {}
+    }
+
     const jitter = Math.random() * 1000;
-    const backoff = Math.min(5000 * Math.pow(2, globalAttempts), 60000) + jitter;
+    const backoff = Math.min(5000 * Math.pow(2, prevAttempts), 60000) + jitter;
     const err = Object.assign(new Error(`retry ${res.status}`), {
       retryAfter,
       backoffMs: backoff,

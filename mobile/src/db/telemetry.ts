@@ -30,7 +30,11 @@ type EnqueueInput = {
   last_error?: string | null;
 };
 
-const mockQueue: TelemetryRecord[] = [];
+function getMockQueue(): TelemetryRecord[] {
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (!Array.isArray(g.__fleetMockQueue)) (g as Record<string, unknown>).__fleetMockQueue = [];
+  return (g as Record<string, unknown>).__fleetMockQueue as TelemetryRecord[];
+}
 
 function isMock(): boolean {
   try {
@@ -83,7 +87,7 @@ export async function enqueue(point: EnqueueInput): Promise<TelemetryRecord> {
   };
 
   if (isMock()) {
-    mockQueue.push(record);
+    getMockQueue().push(record);
     return record;
   }
 
@@ -138,7 +142,7 @@ export async function enqueue(point: EnqueueInput): Promise<TelemetryRecord> {
 
 export async function getPending(limit = 500): Promise<TelemetryRecord[]> {
   if (isMock()) {
-    return mockQueue.filter((r) => r.sync_status === 'pending').slice(0, limit);
+    return getMockQueue().filter((r) => r.sync_status === 'pending').slice(0, limit);
   }
   const db = database as unknown as {
     collections?: { get: (name: string) => { query: (...args: unknown[]) => { fetch: () => Promise<unknown[]> } } };
@@ -167,7 +171,7 @@ export async function getPendingCount(): Promise<number> {
 
 export async function countPending(): Promise<number> {
   if (isMock()) {
-    return mockQueue.filter((r) => r.sync_status === 'pending').length;
+    return getMockQueue().filter((r) => r.sync_status === 'pending').length;
   }
   const db = database as unknown as {
     collections?: { get: (name: string) => { query: (...args: unknown[]) => { fetchCount: () => Promise<number>; fetch: () => Promise<unknown[]> } } };
@@ -223,7 +227,7 @@ async function purgePending(): Promise<void> {
 
 export async function clearPending(): Promise<void> {
   if (isMock()) {
-    mockQueue.length = 0;
+    getMockQueue().length = 0;
     return;
   }
   await purgePending();
@@ -233,9 +237,10 @@ export async function markSynced(ids: string[]): Promise<void> {
   if (!ids || ids.length === 0) return;
   const idSet = new Set(ids);
   if (isMock()) {
-    const filtered = mockQueue.filter((r) => !idSet.has(r.client_event_id) && !idSet.has(r.id));
-    mockQueue.length = 0;
-    mockQueue.push(...filtered);
+    const q = getMockQueue();
+    const filtered = q.filter((r) => !idSet.has(r.client_event_id) && !idSet.has(r.id));
+    q.length = 0;
+    q.push(...filtered);
     return;
   }
   const db = database as unknown as {
@@ -279,7 +284,7 @@ export async function incrementAttempts(ids: string[], lastError: string): Promi
   if (!ids || ids.length === 0) return;
   const idSet = new Set(ids);
   if (isMock()) {
-    for (const r of mockQueue) {
+    for (const r of getMockQueue()) {
       if (idSet.has(r.client_event_id) || idSet.has(r.id)) {
         r.attempts = (r.attempts ?? 0) + 1;
         r.last_error = lastError;
@@ -347,7 +352,7 @@ export async function markFailed(ids: string[], lastError: string): Promise<void
   await incrementAttempts(ids, lastError);
 }
 
-export const _mockQueue = mockQueue;
+export const _mockQueue = getMockQueue();
 
 export const telemetryPort = {
   clearPending,
