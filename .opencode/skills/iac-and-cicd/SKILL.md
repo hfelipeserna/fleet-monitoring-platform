@@ -27,11 +27,11 @@ Servicios base: `nats` (con `-js` y persistencia en volumen), `timescaledb` (con
 - Job opcional de **carga (k6)** que corre contra el entorno de CI o local levantado.
 - Deploy: job `terraform apply` a un entorno protegido al mergear a `main` (branch protection). Secretos vía GitHub Secrets, nunca inline.
 
-## Móvil CI/CD (Fastlane + EAS)
+## Móvil CI/CD (Fastlane + EAS) — ver skill `expo-workflow` para detalle
 
-- `Fastfile`: lanes `build_android` / `build_ios` (o `release`) + `upload` a EAS/AppStore. Lanes idempotentes con Fastlane match para signing si aplica.
-- Workflow móvil: `typecheck`, `lint`, `expo export` y ejecuta el lane de Fastlane en main/PR.
-- Expo: preferí `eas build` para builds en cloud; Fastlane para la automatización de release local si hace falta.
+- `Fastfile`: lanes `build_android` / `build_ios` (o `release`) + `upload` a EAS/AppStore. Lanes idempotentes con Fastlane match para signing si aplica. Si usas `eas build` cloud, Fastlane es wrapper `sh("eas build --platform android --profile preview --non-interactive --no-wait")`.
+- Workflow móvil: `.github/workflows/mobile.yml` con `paths: ["mobile/**"]` + `typecheck` + `lint` + `npm test -- --run --coverage` + `expo export --platform all` y opcional `eas build` con `EXPO_TOKEN` secreto (ver `expo-workflow`). No disparar `mobile` si solo cambia `backend/`.
+- Expo: preferí `eas build` cloud para no cargar 16GB RAM; Fastlane para signing/release local. `eas.json` `dev/preview/production` sin secretos; `EXPO_PUBLIC_API_URL` via env (`http://localhost:8080` vs `http://LAN_IP:8080` para Expo Go). Ver `expo-workflow` para `ipconfig getifaddr en0`, `--tunnel` vs LAN, `expo-doctor`.
 
 ## Verificación siempre
 
