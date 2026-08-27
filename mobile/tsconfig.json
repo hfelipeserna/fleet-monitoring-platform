@@ -6,14 +6,13 @@
     "module": "ESNext",
     "target": "ES2020",
     "lib": ["ES2020", "DOM"],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
+    "moduleResolution": "bundler",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["jest", "node"],
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/__mocks__/**", "**/coverage/**"]
