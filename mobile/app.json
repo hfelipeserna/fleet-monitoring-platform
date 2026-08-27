@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "fleet-mobile",
+    "slug": "fleet-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "sdkVersion": "52.0.0",
+    "extra": {
+      "apiUrl": "http://localhost:8080"
+    },
+    "plugins": []
+  }
+}

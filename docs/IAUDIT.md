@@ -327,6 +327,22 @@ Por qué falla: `speeding_on/off` y `zone_enter/exit` nunca llegaban a `AlertsPa
 Refactor exigido: Cableado `consumer.WithAlertProcessor(detector)` con `jsPublisher` + `PGZoneResolver` + breaker, `Alert` con `json:"alert_type"` etc. + `ZoneName`, `subscriber` efímero sin Durable (broadcast), `AlertsPanel` con `bg-red-100`/`bg-green-100` y `zone_exit` con nombre. Verificado `ALERTS:5` con `zone_name:"Rafael Uribe"` y SSE `id:13 speeding_on`. Commit 808132e.
 Auditor: architect | reviewer
 
+## 2026-08-27 — Auditoría: mobile plate PLATE_RE_GLOBAL stateful + dead code [SPEC-005 TASK-005-01]
+Severidad: media
+Hallazgo: mobile-expo generó `PLATE_RE_GLOBAL = /\b[A-Z]{3}[0-9]{3}\b/g` exportado sin uso, con flag `/g` stateful y `\b` que permite substring match dentro de texto libre. La IA lo propuso como "útil para buscar placas en chat" copiado de web sin necesidad en TASK-005-01.
+Evidencia: mobile/src/lib/plate.ts:2 (pre commit 64bcc64, ver git diff) `export const PLATE_RE_GLOBAL = /\b[A-Z]{3}[0-9]{3}\b/g;` con 0 usages en `grep -R mobile/src`
+Por qué falla: Código muerto viola AGENTS.md cero código muerto y SSOT `PLATE_RE=/^[A-Z]{3}[0-9]{3}$/` FR-001 BR-001. Flag `/g` con `RegExp.test()` es stateful (`lastIndex`) y produce flaky true→false alternado si se reutiliza en hot path batch 500 (250 falsos negativos). Patrón `\b` contradice anclas `^$` y permitiría validar `ACF3567` como `ACF356` interior, rompiendo BR-001. En web se evita exportando `PLATE_RE_SOURCE` + `new RegExp` por llamada.
+Refactor exigido: Eliminado export en commit siguiente (solo `PLATE_RE` + `normalizePlate` + `isValidPlate` SSOT). Si en futuro se necesita extracción, crear `createPlateGlobal()` sin singleton stateful con test dedicado. `npm test 20/20 PASS`, `tsc --noEmit` OK. Commit feat(mobile) TASK-005-01.
+Auditor: reviewer | quality-auditor | architect
+
+## 2026-08-27 — Auditoría: mobile PlateInput triple normalize + Props genérico [SPEC-005 TASK-005-01]
+Severidad: media
+Hallazgo: IA generó `PlateInput` con `type Props` genérico y triple normalización por keystroke: `onChangeText=>normalize`, `valid=isValidPlate(plate)` renormaliza, `onPress=>onConnect(normalizePlate(plate))` renormaliza estado ya canónico. Propuesta inicial sin `useMemo` ni invariante documentado.
+Evidencia: mobile/src/components/PlateInput.tsx:5 `type Props`, :11 `const valid=isValidPlate(plate)`, :18 `onChangeText={(t)=>setPlate(normalizePlate(t))}`, :31 `onConnect(normalizePlate(plate))` (pre fix)
+Por qué falla: `Props` colisiona en barrel exports y dificulta grep/a11y (naming inglés descriptivo AGENTS.md). Triple normalize O(3*6) despreciable en Step1 pero patrón se replica a hot path `flushPending 500` y `useTelemetryGenerator 5s` y oculta invariante "state ya es canónico". No memoizado viola DRY y SOLID leve; web vs mobile `isValidPlate` diverge (mobile normaliza dentro, web exige caller) rompe LSP si se promueve a shared/domain.
+Refactor exigido: Renombrado `PlateInputProps`, cambiado `onPress` a `onConnect(plate)` sin segundo normalize (state ya normalizado), documentado invariante. `npm test 20/20 PASS`. Costo bajo pero forzado para evitar drift en Steps 6-7.
+Auditor: quality-auditor | reviewer | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
