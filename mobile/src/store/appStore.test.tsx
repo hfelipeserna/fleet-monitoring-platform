@@ -107,16 +107,16 @@ describe('appStore', () => {
       expect(useAppStore.getState().sync).toBe('ERROR');
     });
 
-    it('resets to idle on disconnect', () => {
+    it('resets to idle on disconnect', async () => {
       // Arrange
       act(() => {
         useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', plate: 'TGY589' } as any);
       });
 
       // Act
-      act(() => {
+      await act(async () => {
         const s: any = useAppStore.getState();
-        if (s.disconnect) s.disconnect();
+        if (s.disconnect) await s.disconnect();
         else useAppStore.setState({ conn: 'idle', sync: 'CONNECTING', plate: '' } as any);
       });
 

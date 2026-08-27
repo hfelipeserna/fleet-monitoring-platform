@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { isValidPlate } from '../lib/plate';
+import { intervalRegistry } from './intervalRegistry';
 
 export type ConnState = 'idle' | 'connecting' | 'connected' | 'error';
 export type SyncState = 'CONNECTING' | 'CONNECTED' | 'ERROR';
@@ -64,8 +65,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setNet: (net) => set({ net }),
   setDb: (db) => set({ db }),
   setSimOn: (simOn) => set({ simOn }),
-  setAbortController: (c) => set({ __abortController: c }),
-  setTelemetryInterval: (id) => set({ __telemetryInterval: id }),
+  setAbortController: (c: AbortController | null) => set({ __abortController: c }),
+  setTelemetryInterval: (id) => {
+    if (id !== null && id !== undefined) intervalRegistry.register(id);
+    set({ __telemetryInterval: id });
+  },
 
   connect: async (plate: string) => {
     const normalized = plate.trim().toUpperCase();
@@ -90,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const prevSimEnabled = get().simEnabled;
     const prevRoute = get().selectedRoute;
     try {
-      const ac = get().__abortController;
+      const ac: AbortController | null = get().__abortController;
       if (ac) {
         try {
           ac.abort();
@@ -99,56 +103,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       const intervalId = get().__telemetryInterval;
       if (intervalId !== null && intervalId !== undefined) {
-        clearInterval(intervalId as unknown as number);
+        intervalRegistry.clear(intervalId);
         set({ __telemetryInterval: null });
       } else {
-        const g = globalThis as unknown as Record<string, unknown>;
-        let cleared = false;
-        if (g.__telemetryInterval) {
-          try {
-            clearInterval(g.__telemetryInterval as unknown as number);
-          } catch {}
-          (g as Record<string, unknown>).__telemetryInterval = null;
-          cleared = true;
-        }
-        if (g.__fleetInterval) {
-          try {
-            clearInterval(g.__fleetInterval as unknown as number);
-          } catch {}
-          (g as Record<string, unknown>).__fleetInterval = null;
-          cleared = true;
-        }
-        try {
-          const mockSI = globalThis.setInterval as unknown as { mock?: { results?: Array<{ value: unknown }> } };
-          if (mockSI?.mock?.results?.length) {
-            for (const r of mockSI.mock.results) {
-              if (r.value !== null && r.value !== undefined) {
-                try {
-                  clearInterval(r.value as unknown as number);
-                  cleared = true;
-                } catch {}
-              }
-            }
-          }
-        } catch {}
-        if (!cleared) {
-          const tmp = setInterval(() => {}, 1000000);
-          clearInterval(tmp);
-        }
-      }
-      const isTestEnv =
-        typeof process !== 'undefined' &&
-        (!!(process.env.JEST_WORKER_ID || process.env.NODE_ENV === 'test') ||
-          !!(globalThis as unknown as Record<string, unknown>).__JEST__);
-      if (isTestEnv) {
-        set({
-          plate: '',
-          conn: 'idle',
-          sync: 'CONNECTING',
-          simOn: false,
-          simEnabled: false,
-          selectedRoute: null,
-        });
+        intervalRegistry.clearAll();
       }
       const { clearPending } = await import('../db/telemetry');
       await clearPending();

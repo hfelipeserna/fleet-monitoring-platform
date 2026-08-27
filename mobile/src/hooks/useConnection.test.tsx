@@ -291,11 +291,10 @@ describe('useConnection', () => {
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
       expect(getByText(/Network connectivity.*OK/i)).toBeTruthy();
       expect(getByText(/Syncing data \.\.\. CONNECTED/i)).toBeTruthy();
-      // colors: check style includes expected hex (StatusPanel should style dots)
       const panelText = getByText(/WatermelonDB status.*OK/i);
-      const dump = JSON.stringify(panelText.props.style ?? '') + JSON.stringify(panelText.parent?.props?.style ?? '');
-      // at least one OK element should be green; if not styled, this will fail RED prompting impl
-      expect(dump.includes('#16a34a') || panelText.props.style || true).toBeTruthy();
+      const style = panelText.props.style as unknown as Record<string, unknown> | Record<string, unknown>[];
+      const flat = Array.isArray(style) ? Object.assign({}, ...style) : (style as Record<string, unknown>);
+      expect((flat?.color ?? flat?.backgroundColor) as string).toBe('#16a34a');
     });
 
     it('renders Syncing ERROR red #dc2626 after error', async () => {

@@ -6,6 +6,7 @@ import { StatusPanel } from './components/StatusPanel';
 import { useConnection } from './hooks/useConnection';
 import { useNetInfo } from './hooks/useNetInfo';
 import { useAppStore } from './store/appStore';
+import { intervalRegistry } from './store/intervalRegistry';
 import { initDatabase } from './db';
 
 export default function App() {
@@ -113,8 +114,10 @@ export default function App() {
             setRoute(null);
             const iid = useAppStore.getState().__telemetryInterval;
             if (iid) {
-              clearInterval(iid as unknown as number);
+              intervalRegistry.clear(iid);
               useAppStore.setState({ __telemetryInterval: null } as unknown as Record<string, unknown>);
+            } else {
+              intervalRegistry.clearAll();
             }
           }
         }}

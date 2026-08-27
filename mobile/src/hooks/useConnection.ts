@@ -2,6 +2,7 @@ import 'react-native-get-random-values';
 import { useCallback, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '../store/appStore';
+import { intervalRegistry } from '../store/intervalRegistry';
 import { postTelemetry } from '../lib/api';
 import { isValidPlate } from '../lib/plate';
 
@@ -87,7 +88,7 @@ export function useConnection() {
   }, []);
 
   const disconnect = useCallback(async () => {
-    const ac = abortRef.current ?? useAppStore.getState().__abortController;
+    const ac: AbortController | null = abortRef.current ?? useAppStore.getState().__abortController;
     if (ac) {
       try {
         ac.abort();
@@ -97,8 +98,10 @@ export function useConnection() {
     }
     const intervalId = useAppStore.getState().__telemetryInterval;
     if (intervalId !== null && intervalId !== undefined) {
-      clearInterval(intervalId as unknown as number);
+      intervalRegistry.clear(intervalId);
       useAppStore.setState({ __telemetryInterval: null });
+    } else {
+      intervalRegistry.clearAll();
     }
     await useAppStore.getState().disconnect();
   }, []);
