@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { PlateInput } from './components/PlateInput';
@@ -10,10 +10,16 @@ import { initDatabase } from './db';
 
 export default function App() {
   useNetInfo();
-  const { connect } = useConnection();
+  const { connect, disconnect: hookDisconnect } = useConnection();
   const conn = useAppStore((s) => s.conn);
-  const disconnect = useAppStore((s) => s.disconnect);
   const plate = useAppStore((s) => s.plate);
+  const simOn = useAppStore((s) => s.simOn);
+  const simEnabled = useAppStore((s) => s.simEnabled);
+  const selectedRoute = useAppStore((s) => s.selectedRoute);
+  const isDisconnecting = useAppStore((s) => s.isDisconnecting);
+  const setSimOn = useAppStore((s) => s.setSimOn);
+  const setRoute = (r: 'medellin' | 'bogota' | null) => useAppStore.setState({ selectedRoute: r } as unknown as Record<string, unknown>);
+  const [pending, setPending] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,11 +41,45 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { countPending } = await import('./db/telemetry');
+        const c = await countPending();
+        if (!cancelled) setPending(c);
+      } catch {}
+    };
+    load();
+    const id = setInterval(load, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [conn, plate]);
+
   const handleConnect = (p: string) => {
     connect({ plate: p, lat: 0, lon: 0, speed: 0 });
   };
 
   const isConnected = conn === 'connected' || conn === 'error';
+
+  const handleDisconnect = async () => {
+    if (isDisconnecting) return;
+    try {
+      await hookDisconnect();
+    } finally {
+      try {
+        const { countPending } = await import('./db/telemetry');
+        setPending(await countPending());
+      } catch {}
+    }
+  };
+
+  const toggleDisabled = !simEnabled;
+  const toggleBg = !simEnabled ? '#e5e7eb' : simOn ? '#86efac' : '#e5e7eb';
+  const medBg = !simOn ? '#e5e7eb' : selectedRoute === 'medellin' ? '#86efac' : '#93c5fd';
+  const bogBg = !simOn ? '#e5e7eb' : selectedRoute === 'bogota' ? '#86efac' : '#93c5fd';
 
   return (
     <View style={styles.container}>
@@ -49,8 +89,9 @@ export default function App() {
           <Text testID="plate-display">{plate}</Text>
           <Pressable
             testID="disconnect-btn"
-            style={{ backgroundColor: '#f9a8d4', padding: 12, borderRadius: 8, marginTop: 8 }}
-            onPress={disconnect}
+            disabled={isDisconnecting}
+            style={{ backgroundColor: '#f9a8d4', padding: 12, borderRadius: 8, marginTop: 8, opacity: isDisconnecting ? 0.6 : 1 }}
+            onPress={handleDisconnect}
           >
             <Text>Disconnect</Text>
           </Pressable>
@@ -59,7 +100,54 @@ export default function App() {
         <PlateInput onConnect={handleConnect} />
       )}
       <StatusPanel />
-      <Text style={styles.pending}>pending 0</Text>
+      <Pressable
+        testID="sim-toggle"
+        disabled={toggleDisabled}
+        accessibilityState={{ disabled: toggleDisabled }}
+        style={{ backgroundColor: toggleBg, padding: 10, borderRadius: 6, marginTop: 10, opacity: toggleDisabled ? 0.6 : 1 }}
+        onPress={() => {
+          if (toggleDisabled) return;
+          const next = !simOn;
+          setSimOn(next);
+          if (!next) {
+            setRoute(null);
+            const iid = useAppStore.getState().__telemetryInterval;
+            if (iid) {
+              clearInterval(iid as unknown as number);
+              useAppStore.setState({ __telemetryInterval: null } as unknown as Record<string, unknown>);
+            }
+          }
+        }}
+      >
+        <Text>{`Activar ruta simulada ${simOn ? 'ON' : 'OFF'}`}</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Pressable
+          testID="route-medellin-btn"
+          disabled={!simOn}
+          accessibilityState={{ disabled: !simOn }}
+          style={{ backgroundColor: medBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 }}
+          onPress={() => {
+            if (!simOn) return;
+            setRoute('medellin');
+          }}
+        >
+          <Text>Ruta urbana Medellín</Text>
+        </Pressable>
+        <Pressable
+          testID="route-bogota-btn"
+          disabled={!simOn}
+          accessibilityState={{ disabled: !simOn }}
+          style={{ backgroundColor: bogBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 }}
+          onPress={() => {
+            if (!simOn) return;
+            setRoute('bogota');
+          }}
+        >
+          <Text>Ruta urbana Bogotá</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.pending}>{`pending ${pending}`}</Text>
       <StatusBar style="auto" />
     </View>
   );

@@ -50,11 +50,13 @@ export function useConnection() {
       occurred_at: new Date().toISOString(),
     };
 
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    useAppStore.setState({ __abortController: controller });
 
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      const fetchPromise = postTelemetry(event as unknown, { signal: abortRef.current.signal }) as Promise<Response>;
+      const fetchPromise = postTelemetry(event as unknown, { signal: controller.signal }) as Promise<Response>;
       await Promise.resolve();
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -77,26 +79,28 @@ export function useConnection() {
       useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
     } finally {
       abortRef.current = null;
+      const current = useAppStore.getState().__abortController;
+      if (current === controller) {
+        useAppStore.setState({ __abortController: null });
+      }
     }
   }, []);
 
-  const disconnect = useCallback(() => {
-    if (abortRef.current) {
+  const disconnect = useCallback(async () => {
+    const ac = abortRef.current ?? useAppStore.getState().__abortController;
+    if (ac) {
       try {
-        abortRef.current.abort();
+        ac.abort();
       } catch {}
       abortRef.current = null;
+      useAppStore.setState({ __abortController: null });
     }
-    const s = useAppStore.getState();
-    if (s.disconnect) s.disconnect();
-    else
-      useAppStore.setState({
-        plate: '',
-        conn: 'idle',
-        sync: 'CONNECTING',
-        net: 'OK',
-        db: 'OK',
-      } as unknown as Record<string, unknown>);
+    const intervalId = useAppStore.getState().__telemetryInterval;
+    if (intervalId !== null && intervalId !== undefined) {
+      clearInterval(intervalId as unknown as number);
+      useAppStore.setState({ __telemetryInterval: null });
+    }
+    await useAppStore.getState().disconnect();
   }, []);
 
   return { connect, disconnect };
