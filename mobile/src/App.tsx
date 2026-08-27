@@ -4,20 +4,21 @@ import { StatusBar } from 'expo-status-bar';
 import { PlateInput } from './components/PlateInput';
 import { StatusPanel } from './components/StatusPanel';
 import { RouteToggle } from './components/RouteToggle';
+import { RouteButtons } from './components/RouteButtons';
 import { useConnection } from './hooks/useConnection';
 import { useNetInfo } from './hooks/useNetInfo';
+import { useTelemetryGenerator } from './hooks/useTelemetryGenerator';
 import { useAppStore } from './store/appStore';
 import { initDatabase } from './db';
 
 export default function App() {
   useNetInfo();
+  useTelemetryGenerator();
   const { connect, disconnect: hookDisconnect } = useConnection();
   const conn = useAppStore((s) => s.conn);
   const plate = useAppStore((s) => s.plate);
   const simOn = useAppStore((s) => s.simOn);
-  const selectedRoute = useAppStore((s) => s.selectedRoute);
   const isDisconnecting = useAppStore((s) => s.isDisconnecting);
-  const setRoute = (r: 'medellin' | 'bogota' | null) => useAppStore.setState({ selectedRoute: r } as unknown as Record<string, unknown>);
   const [pending, setPending] = useState(0);
 
   useEffect(() => {
@@ -75,9 +76,6 @@ export default function App() {
     }
   };
 
-  const medBg = !simOn ? '#e5e7eb' : selectedRoute === 'medellin' ? '#86efac' : '#93c5fd';
-  const bogBg = !simOn ? '#e5e7eb' : selectedRoute === 'bogota' ? '#86efac' : '#93c5fd';
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>fleet-mobile</Text>
@@ -100,30 +98,7 @@ export default function App() {
       <RouteToggle />
       <Text style={{ marginTop: 8 }}>{`Activar ruta simulada ${simOn ? 'ON' : 'OFF'}`}</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-        <Pressable
-          testID="route-medellin-btn"
-          disabled={!simOn}
-          accessibilityState={{ disabled: !simOn }}
-          style={{ backgroundColor: medBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 }}
-          onPress={() => {
-            if (!simOn) return;
-            setRoute('medellin');
-          }}
-        >
-          <Text>Ruta urbana Medellín</Text>
-        </Pressable>
-        <Pressable
-          testID="route-bogota-btn"
-          disabled={!simOn}
-          accessibilityState={{ disabled: !simOn }}
-          style={{ backgroundColor: bogBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 }}
-          onPress={() => {
-            if (!simOn) return;
-            setRoute('bogota');
-          }}
-        >
-          <Text>Ruta urbana Bogotá</Text>
-        </Pressable>
+        <RouteButtons />
       </View>
       <Text style={styles.pending}>{`pending ${pending}`}</Text>
       <StatusBar style="auto" />
