@@ -81,7 +81,7 @@ describe('db/persist - WatermelonDB survives kill AC-009 FR-008 BR-010', () => {
     expect(countAfter).toBe(245);
     const idsAfter = new Set(pendingAfter.map((r: any) => r.client_event_id));
     expect(idsAfter.size).toBe(245);
-    idsAfter.forEach((id: string) => expect(id).toMatch(UUID_RE));
+    idsAfter.forEach((id: unknown) => expect(String(id)).toMatch(UUID_RE));
   });
 
   it('client_event_id uniques preserved after kill, no duplicates', async () => {

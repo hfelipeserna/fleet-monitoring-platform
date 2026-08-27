@@ -2,7 +2,7 @@
 // Covers AC-003 AC-010 FR-003 BR-004 - useNetInfo NetInfo listener + cleanup + desacoplados
 import { renderHook, act, waitFor } from '@testing-library/react-native';
 
-const mockAddEventListener = jest.fn(() => jest.fn());
+const mockAddEventListener = jest.fn((cb: any) => jest.fn());
 const mockFetch = jest.fn().mockResolvedValue({ isConnected: true, isInternetReachable: true });
 
 jest.mock('@react-native-community/netinfo', () => ({
