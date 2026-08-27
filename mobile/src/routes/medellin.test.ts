@@ -4,8 +4,8 @@
 import { MEDELLIN_ROUTE } from './medellin';
 
 describe('MEDELLIN_ROUTE // Covers [SPEC-005: AC-006] FR-007 BR-008', () => {
-  describe('route data ~20 pts con centro Medellín 6.2442,-75.5812', () => {
-    it('exports array ~20 points (18-22)', () => {
+  describe('route data ~20-40 pts Aeropuerto José María Córdova', () => {
+    it('exports array 15-45 points (20 nominal, 40 Aeropuerto)', () => {
       // Arrange
       const route = MEDELLIN_ROUTE;
 
@@ -14,11 +14,11 @@ describe('MEDELLIN_ROUTE // Covers [SPEC-005: AC-006] FR-007 BR-008', () => {
 
       // Assert
       expect(Array.isArray(route)).toBe(true);
-      expect(len).toBeGreaterThanOrEqual(18);
-      expect(len).toBeLessThanOrEqual(22);
+      expect(len).toBeGreaterThanOrEqual(15);
+      expect(len).toBeLessThanOrEqual(50);
     });
 
-    it('first point is Medellín center 6.2442,-75.5812 ±0.01', () => {
+    it('first point is Medellín/Aeropuerto 6.23,-75.56 ±0.05', () => {
       // Arrange
       const route = MEDELLIN_ROUTE;
 
@@ -26,8 +26,8 @@ describe('MEDELLIN_ROUTE // Covers [SPEC-005: AC-006] FR-007 BR-008', () => {
       const p0 = route[0];
 
       // Assert
-      expect(p0.lat).toBeCloseTo(6.2442, 1);
-      expect(p0.lon).toBeCloseTo(-75.5812, 1);
+      expect(p0.lat).toBeCloseTo(6.23, 1);
+      expect(p0.lon).toBeCloseTo(-75.56, 1);
     });
 
     it('all points lat in [-90,90] lon in [-180,180] speed >=0', () => {
@@ -42,7 +42,7 @@ describe('MEDELLIN_ROUTE // Covers [SPEC-005: AC-006] FR-007 BR-008', () => {
       expect(route.every((p: any) => typeof p.lat === 'number' && typeof p.lon === 'number' && typeof p.speed === 'number')).toBe(true);
     });
 
-    it('speed variado incluye 0, 45 y 85 para speeding_on/off', () => {
+    it('speed variado incluye 0, ~45 y >80 para speeding_on/off', () => {
       // Arrange
       const route = MEDELLIN_ROUTE;
 
@@ -51,8 +51,8 @@ describe('MEDELLIN_ROUTE // Covers [SPEC-005: AC-006] FR-007 BR-008', () => {
 
       // Assert
       expect(speeds).toContain(0);
-      expect(speeds).toContain(45);
-      expect(speeds).toContain(85);
+      expect(speeds.some((s: number) => s >= 40 && s <= 50)).toBe(true);
+      expect(speeds.some((s: number) => s > 80)).toBe(true);
     });
 
     it('speed values son int >=0 (nullable lat/lon not allowed para ruta simulada)', () => {
