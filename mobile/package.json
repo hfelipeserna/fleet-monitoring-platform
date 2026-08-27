@@ -13,6 +13,7 @@
     "lint": "eslint . --ext .ts,.tsx || echo \"lint: no eslint config yet\""
   },
   "dependencies": {
+    "@nozbe/watermelondb": "^0.27.1",
     "@react-native-community/netinfo": "^11.3.1",
     "expo": "~52.0.0",
     "expo-constants": "~17.0.3",

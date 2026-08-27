@@ -26,13 +26,13 @@ export function StatusPanel(props: StatusPanelProps) {
         testID="db-status"
         style={{ color: db === 'OK' ? '#16a34a' : '#dc2626' }}
       >
-        {`WatermelonDB status ● ${db}`}
+        {`WatermelonDB status ○ ${db}`}
       </Text>
       <Text
         testID="net-status"
         style={{ color: net === 'OK' ? '#16a34a' : '#dc2626' }}
       >
-        {`Network connectivity ● ${net}`}
+        {`Network connectivity ○ ${net}`}
       </Text>
     </View>
   );

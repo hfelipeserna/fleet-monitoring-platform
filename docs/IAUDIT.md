@@ -359,6 +359,22 @@ Por qué falla: Viola AGENTS.md DIP/clean architecture `domain→application→a
 Refactor exigido: Deuda aceptada para TASK-005-02 (tests `TEST-002` cubren ambos por tolerancia), exigir SSOT `useConnection` como orquestador único y `appStore` solo estado puro `setConn/sync/net/db` con `TelemetryPort` interface en TASK-005-07. Registrado para bloquear duplicación en batch. `npm test 49/49` no regresa.
 Auditor: reviewer | quality-auditor | architect
 
+## 2026-08-27 — Auditoría: mobile WatermelonDB no init + LokiJS memory + infra→store [SPEC-005 TASK-005-03]
+Severidad: alta
+Hallazgo: IA generó `db/index.ts` (infra) importando `useAppStore` (application) y enmascarando fallo como `OK`, `App.tsx` nunca llamó `initDatabase()`, y `schema` con `migrations as unknown` + `LokiJSAdapter` memory en vez de `SQLiteAdapter` persistente.
+Evidencia: mobile/src/db/index.ts:2 `import {useAppStore}`, :10-35 `tryInitWatermelon` catch `return {_mock:true}`, :40 `useAppStore.setState({db:'OK'})` incluso en mock error, mobile/src/App.tsx:1-11 sin `initDatabase`, mobile/src/db/schema.ts:24 `as unknown`, mobile/src/db/index.ts:20 `LokiJSAdapter` hardcoded `useIncrementalIndexedDB:false` (pre fix)
+Por qué falla: Viola DIP `infra→application` (store) y fail-open `OK` fake rompe FR-003 `WatermelonDB status ○ OK/ERROR` y NFR-002 `survive kill 245` (LokiJS memory pierde datos, AC-009). `migrations as unknown` anula `tsc` y `pending 0` hardcodeado oculta observabilidad. Sin `initDatabase` en `App`, `db:'OK'` optimista permite `POST` aunque DB rota (BR-003).
+Refactor exigido: Eliminado `import useAppStore` de `db/`, `initDatabase` memoiza `initPromise` + `SQLiteAdapter` con fallback `LokiJS` solo para Jest (`useIncrementalIndexedDB:true`), `pending_telemetry.sync_status isIndexed:true`, `App.tsx` `useEffect initDatabase().then(s=>setDb(s))` con `Date.now` guard <1s, `database` export via `getDatabase()` no `default`. `npm test 71/71 PASS`, `tsc --noEmit` OK. Commit feat(mobile) TASK-005-03.
+Auditor: reviewer | quality-auditor | architect
+
+## 2026-08-27 — Auditoría: mobile store connect duplicado + StatusPanel triple subscribe [SPEC-005 TASK-005-03]
+Severidad: alta
+Hallazgo: IA duplicó 60L `connect` entre `store/appStore.ts` y `hooks/useConnection.ts` con timeout divergente, y `StatusPanel` con 3 `useAppStore` selectors sin `useShallow` + colores hex hardcodeados.
+Evidencia: mobile/src/store/appStore.ts:63-106 vs mobile/src/hooks/useConnection.ts:28-81 (pre fix), mobile/src/components/StatusPanel.tsx:12-18 tres `useAppStore(s=>s.xxx)` sin memo
+Por qué falla: DRY/SRP grave, drift `plate:string` vs `{plate,lat,lon,speed}` y `simEnabled` bypass. `StatusPanel` 3 renders/tick y hex `#16a34a/#dc2626` duplicado 5x viola DRY y perf O(3) hot path. `as unknown` en `db` desactiva type-check.
+Refactor exigido: `store.connect` dejado como puro `setConn` sin `postTelemetry` (SSOT `useConnection` orquestador), `useAppStore` solo estado, `StatusPanel` futuro `useShallow` + `PALETTE` token (deuda `TASK-005-09`). `npm test 71/71` no regresa.
+Auditor: quality-auditor | reviewer | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,

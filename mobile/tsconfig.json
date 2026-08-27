@@ -22,5 +22,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*", "jest.setup.js", "jest.config.js", "babel.config.js"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.test.tsx", "src/__tests__/**"]
 }

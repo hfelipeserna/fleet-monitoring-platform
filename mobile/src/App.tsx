@@ -1,16 +1,39 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { PlateInput } from './components/PlateInput';
 import { StatusPanel } from './components/StatusPanel';
 import { useConnection } from './hooks/useConnection';
+import { useNetInfo } from './hooks/useNetInfo';
 import { useAppStore } from './store/appStore';
+import { initDatabase } from './db';
 
 export default function App() {
+  useNetInfo();
   const { connect } = useConnection();
   const conn = useAppStore((s) => s.conn);
   const disconnect = useAppStore((s) => s.disconnect);
   const plate = useAppStore((s) => s.plate);
+
+  useEffect(() => {
+    let cancelled = false;
+    const t0 = Date.now();
+    initDatabase()
+      .then((status) => {
+        if (cancelled) return;
+        const ms = Date.now() - t0;
+        if (ms > 1000) {
+          console.warn(`[db] init slow ${ms}ms`);
+        }
+        useAppStore.setState({ db: status });
+      })
+      .catch(() => {
+        if (!cancelled) useAppStore.setState({ db: 'ERROR' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleConnect = (p: string) => {
     connect({ plate: p, lat: 0, lon: 0, speed: 0 });

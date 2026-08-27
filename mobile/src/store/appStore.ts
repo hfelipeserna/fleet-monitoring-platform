@@ -1,8 +1,5 @@
-import 'react-native-get-random-values';
-import { v4 as uuidv4 } from 'uuid';
 import { create } from 'zustand';
 import { isValidPlate } from '../lib/plate';
-import { postTelemetry } from '../lib/api';
 
 export type ConnState = 'idle' | 'connecting' | 'connected' | 'error';
 export type SyncState = 'CONNECTING' | 'CONNECTED' | 'ERROR';
@@ -70,38 +67,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { db, net } = get();
     if (db !== 'OK' || net !== 'OK') {
       set({ conn: 'error', sync: 'ERROR' });
-      return;
-    }
-    try {
-      const event = {
-        plate: normalized,
-        lat: 0,
-        lon: 0,
-        speed: 0,
-        client_event_id: uuidv4(),
-        occurred_at: new Date().toISOString(),
-      };
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const race = Promise.race([
-        postTelemetry(event, { signal: controller.signal }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 5000),
-        ),
-      ]);
-      let res: Response;
-      try {
-        res = (await race) as Response;
-      } finally {
-        clearTimeout(timeout);
-      }
-      if (res.status === 202) {
-        set({ conn: 'connected', sync: 'CONNECTED', simEnabled: true });
-      } else {
-        set({ conn: 'error', sync: 'ERROR', simEnabled: false });
-      }
-    } catch {
-      set({ conn: 'error', sync: 'ERROR', simEnabled: false });
     }
   },
 
