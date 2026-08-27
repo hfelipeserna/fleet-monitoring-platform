@@ -1,13 +1,41 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { PlateInput } from './components/PlateInput';
+import { StatusPanel } from './components/StatusPanel';
+import { useConnection } from './hooks/useConnection';
+import { useAppStore } from './store/appStore';
 
 export default function App() {
+  const { connect } = useConnection();
+  const conn = useAppStore((s) => s.conn);
+  const disconnect = useAppStore((s) => s.disconnect);
+  const plate = useAppStore((s) => s.plate);
+
+  const handleConnect = (p: string) => {
+    connect({ plate: p, lat: 0, lon: 0, speed: 0 });
+  };
+
+  const isConnected = conn === 'connected' || conn === 'error';
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>fleet-mobile</Text>
-      <PlateInput onConnect={() => {}} />
+      {isConnected ? (
+        <View style={{ width: '100%', alignItems: 'center' }}>
+          <Text testID="plate-display">{plate}</Text>
+          <Pressable
+            testID="disconnect-btn"
+            style={{ backgroundColor: '#f9a8d4', padding: 12, borderRadius: 8, marginTop: 8 }}
+            onPress={disconnect}
+          >
+            <Text>Disconnect</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <PlateInput onConnect={handleConnect} />
+      )}
+      <StatusPanel />
       <Text style={styles.pending}>pending 0</Text>
       <StatusBar style="auto" />
     </View>

@@ -343,6 +343,22 @@ Por qué falla: `Props` colisiona en barrel exports y dificulta grep/a11y (namin
 Refactor exigido: Renombrado `PlateInputProps`, cambiado `onPress` a `onConnect(plate)` sin segundo normalize (state ya normalizado), documentado invariante. `npm test 20/20 PASS`. Costo bajo pero forzado para evitar drift en Steps 6-7.
 Auditor: quality-auditor | reviewer | architect
 
+## 2026-08-27 — Auditoría: mobile getBaseUrl Function eval + occurred_at number [SPEC-005 TASK-005-02]
+Severidad: media
+Hallazgo: IA generó `lib/api.ts` con `Function('return process.env.EXPO_PUBLIC_API_URL')()` (eval) para leer env y `occurred_at: Date.now()` number ms, y `AbortController` huérfano sin propagar `signal` (store y hook duplicaban timeout 5s). Propuesta copia de snippet web sin adaptar a Expo/Metro.
+Evidencia: mobile/src/lib/api.ts:11 `Function(...)`, mobile/src/store/appStore.ts:82 `occurred_at: Date.now()`, mobile/src/hooks/useConnection.ts:50 `Date.now()`, mobile/src/store/appStore.ts:84-99 `controller+Promise.race` sin `signal`, mobile/src/hooks/useConnection.ts:53 `abortRef` huérfano (pre fix)
+Por qué falla: `Function` es CWE-95 eval, rompe CSP/no-eval y escapa static analysis de secretos (security media, OWASP A03). `Date.now()` pierde TZ/ISO y rompe contrato `openapi` `occurred_at` ISO trazable NFR-005 y `slog` backend. Abort huérfano hace `Disconnect` no cancelar fetch real → race `connected` pisa `idle` tras disconnect (flota fantasma) y desperdicia 2 timers/request. `simEnabled` bypass `setConn` deja toggle gris tras 202 (AC-002).
+Refactor exigido: Cambiado a `globalThis.process.env.EXPO_PUBLIC_API_URL` directo (Expo inlines) + `Constants.expoConfig.extra.apiUrl` fallback, `occurred_at: new Date().toISOString()` SSOT, `postTelemetry(event, {signal})` con único `AbortController` por intento compartido, `useConnection` pasa `signal` y set `simEnabled:true` vía `setState`, `appStore` usa `ISO` y `signal`. `npm test 49/49 PASS` (incluye `api.test` 7/7), `tsc --noEmit` OK. Commit feat(mobile) TASK-005-02.
+Auditor: reviewer | security | architect
+
+## 2026-08-27 — Auditoría: mobile store duplicado connect + hook sin DIP [SPEC-005 TASK-005-02]
+Severidad: media
+Hallazgo: IA duplicó máquina `idle->connecting->connected/error` en `appStore.connect()` y `useConnection.connect()` ambos importando `postTelemetry` directo, sin port/interface. Dos fuentes de verdad para mismo caso de uso.
+Evidencia: mobile/src/store/appStore.ts:5 `import {postTelemetry}`, :63-109 `connect: async`, mobile/src/hooks/useConnection.ts:5 `import {postTelemetry}`, :28-81 segundo `connect` (pre fix)
+Por qué falla: Viola AGENTS.md DIP/clean architecture `domain→application→adapters→infra` (store application depende de adapter `lib/api` concreto) y DRY. Cambio de `fetch` a `WatermelonDB queue` obliga 2 edits y diverge `simEnabled` (hook no lo seteaba). En backend equivale a `application` importando `adapters/http`.
+Refactor exigido: Deuda aceptada para TASK-005-02 (tests `TEST-002` cubren ambos por tolerancia), exigir SSOT `useConnection` como orquestador único y `appStore` solo estado puro `setConn/sync/net/db` con `TelemetryPort` interface en TASK-005-07. Registrado para bloquear duplicación en batch. `npm test 49/49` no regresa.
+Auditor: reviewer | quality-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
