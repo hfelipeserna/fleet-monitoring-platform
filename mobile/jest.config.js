@@ -7,6 +7,7 @@ module.exports = {
   ],
   moduleNameMapper: {
     '^uuid$': '<rootDir>/node_modules/uuid/dist/index.js',
+    '^expo-location$': '<rootDir>/src/mocks/expo-location.ts',
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.test.{ts,tsx}', '!src/**/*.d.ts'],

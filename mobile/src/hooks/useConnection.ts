@@ -2,7 +2,8 @@ import 'react-native-get-random-values';
 import { useCallback, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '../store/appStore';
-import { intervalRegistry } from '../store/intervalRegistry';
+import { getIntervalPort } from '../store/ports';
+import type { IntervalPort } from '../store/ports';
 import { postTelemetry } from '../lib/api';
 import { isValidPlate } from '../lib/plate';
 
@@ -13,7 +14,16 @@ type ConnectParams = {
   speed?: number;
 };
 
-export function useConnection() {
+function intervalClearAll(port?: IntervalPort): void {
+  const injected = port ?? getIntervalPort();
+  if (injected) {
+    injected.clearAll();
+    return;
+  }
+  clearInterval(0 as unknown as number);
+}
+
+export function useConnection(intervalPort?: IntervalPort) {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -53,58 +63,44 @@ export function useConnection() {
 
     const controller = new AbortController();
     abortRef.current = controller;
-    useAppStore.setState({ __abortController: controller });
 
     try {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      const fetchPromise = postTelemetry(event as unknown, { signal: controller.signal }) as Promise<Response>;
       await Promise.resolve();
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('timeout')), 5000);
-      });
-      let res: Response;
-      try {
-        res = (await Promise.race([fetchPromise, timeoutPromise])) as Response;
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const res = (await postTelemetry(event as unknown, { signal: controller.signal })) as Response;
       if (res.status === 202) {
         useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', simEnabled: true });
       } else {
         useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
       }
     } catch {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (controller.signal.aborted) {
+        const cur = useAppStore.getState().conn;
+        if (cur === 'idle') return;
+      }
       useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
     } finally {
       abortRef.current = null;
-      const current = useAppStore.getState().__abortController;
-      if (current === controller) {
-        useAppStore.setState({ __abortController: null });
-      }
     }
   }, []);
 
   const disconnect = useCallback(async () => {
-    const ac: AbortController | null = abortRef.current ?? useAppStore.getState().__abortController;
+    const ac: AbortController | null = abortRef.current;
     if (ac) {
       try {
         ac.abort();
       } catch {}
       abortRef.current = null;
-      useAppStore.setState({ __abortController: null });
     }
-    const intervalId = useAppStore.getState().__telemetryInterval;
-    if (intervalId !== null && intervalId !== undefined) {
-      intervalRegistry.clear(intervalId);
-      useAppStore.setState({ __telemetryInterval: null });
+    const port = intervalPort ?? getIntervalPort();
+    if (port) {
+      try {
+        port.clearAll();
+      } catch {}
     } else {
-      intervalRegistry.clearAll();
+      intervalClearAll();
     }
     await useAppStore.getState().disconnect();
-  }, []);
+  }, [intervalPort]);
 
   return { connect, disconnect };
 }

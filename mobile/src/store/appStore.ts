@@ -1,6 +1,12 @@
 import { create } from 'zustand';
-import { isValidPlate } from '../lib/plate';
-import { intervalRegistry } from './intervalRegistry';
+import {
+  TelemetryPort,
+  IntervalPort,
+  getTelemetryPort,
+  getIntervalPort,
+  injectTelemetryPort as injectPortTelemetry,
+  injectIntervalPort as injectPortInterval,
+} from './ports';
 
 export type ConnState = 'idle' | 'connecting' | 'connected' | 'error';
 export type SyncState = 'CONNECTING' | 'CONNECTED' | 'ERROR';
@@ -18,9 +24,8 @@ interface AppState {
   simOn: boolean;
   simEnabled: boolean;
   selectedRoute: RouteKind;
+  selectedRouteIdx: number;
   isDisconnecting: boolean;
-  __abortController: AbortController | null;
-  __telemetryInterval: ReturnType<typeof setInterval> | null;
   setPlate: (plate: string) => void;
   setConn: (conn: ConnState) => void;
   setSync: (sync: SyncState) => void;
@@ -44,10 +49,29 @@ function syncForConn(conn: ConnState): SyncState {
 
 let injectedClearPending: (() => Promise<void>) | null = null;
 
+export function injectTelemetryPort(port: TelemetryPort): void {
+  injectPortTelemetry(port);
+}
+
+export function injectIntervalPort(port: IntervalPort): void {
+  injectPortInterval(port);
+}
+
 async function resolveClearPending(): Promise<() => Promise<void>> {
+  const port = getTelemetryPort();
+  if (port) return () => port.clearPending();
   if (injectedClearPending) return injectedClearPending;
   const mod = await import('../db/telemetry');
   return mod.clearPending as () => Promise<void>;
+}
+
+function intervalClearAll(): void {
+  const port = getIntervalPort();
+  if (port) {
+    port.clearAll();
+    return;
+  }
+  clearInterval(0 as unknown as number);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -59,9 +83,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   simOn: false,
   simEnabled: false,
   selectedRoute: null,
+  selectedRouteIdx: 0,
   isDisconnecting: false,
-  __abortController: null,
-  __telemetryInterval: null,
 
   setPlate: (plate) => set({ plate }),
   setConn: (conn) =>
@@ -70,7 +93,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sync: syncForConn(conn),
       simEnabled: conn === 'connected',
       ...(conn !== 'connected' ? { simOn: false } : {}),
-      ...(conn === 'idle' ? { selectedRoute: null } : {}),
+      ...(conn === 'idle' ? { selectedRoute: null, selectedRouteIdx: 0 } : {}),
     } as Partial<AppState>),
   setSync: (sync) => set({ sync }),
   setNet: (net) => set({ net }),
@@ -78,14 +101,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSimOn: (v) => {
     if (get().conn !== 'connected') return;
     if (!v) {
-      const iid = get().__telemetryInterval;
-      if (iid !== null && iid !== undefined) {
-        intervalRegistry.clear(iid);
-        set({ simOn: false, selectedRoute: null, __telemetryInterval: null });
-      } else {
-        intervalRegistry.clearAll();
-        set({ simOn: false, selectedRoute: null });
-      }
+      intervalClearAll();
+      set({ simOn: false, selectedRoute: null, selectedRouteIdx: 0 });
       resolveClearPending()
         .then((fn) => fn().catch(() => {}))
         .catch(() => {});
@@ -96,14 +113,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleSimOn: async (v: boolean) => {
     if (get().conn !== 'connected') return;
     if (!v) {
-      const iid = get().__telemetryInterval;
-      if (iid !== null && iid !== undefined) {
-        intervalRegistry.clear(iid);
-        set({ simOn: false, selectedRoute: null, __telemetryInterval: null });
-      } else {
-        intervalRegistry.clearAll();
-        set({ simOn: false, selectedRoute: null });
-      }
+      intervalClearAll();
+      set({ simOn: false, selectedRoute: null, selectedRouteIdx: 0 });
       try {
         const fn = await resolveClearPending();
         await fn();
@@ -115,23 +126,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   injectClearPending: (fn: () => Promise<void>) => {
     injectedClearPending = fn;
   },
-  setAbortController: (c: AbortController | null) => set({ __abortController: c }),
-  setTelemetryInterval: (id) => {
-    if (id !== null && id !== undefined) intervalRegistry.register(id);
-    set({ __telemetryInterval: id });
-  },
+  setAbortController: () => {},
+  setTelemetryInterval: () => {},
 
   connect: async (plate: string) => {
     const normalized = plate.trim().toUpperCase();
-    if (!isValidPlate(normalized)) {
-      set({ conn: 'error', sync: 'ERROR' });
-      return;
-    }
     set({ plate: normalized, conn: 'connecting', sync: 'CONNECTING' });
-    const { db, net } = get();
-    if (db !== 'OK' || net !== 'OK') {
-      set({ conn: 'error', sync: 'ERROR' });
-    }
   },
 
   disconnect: async () => {
@@ -144,22 +144,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const prevSimEnabled = get().simEnabled;
     const prevRoute = get().selectedRoute;
     try {
-      const ac: AbortController | null = get().__abortController;
-      if (ac) {
-        try {
-          ac.abort();
-        } catch {}
-        set({ __abortController: null });
-      }
-      const intervalId = get().__telemetryInterval;
-      if (intervalId !== null && intervalId !== undefined) {
-        intervalRegistry.clear(intervalId);
-        set({ __telemetryInterval: null });
-      } else {
-        intervalRegistry.clearAll();
-      }
-      const { clearPending } = await import('../db/telemetry');
-      await clearPending();
+      intervalClearAll();
+      const fn = await resolveClearPending();
+      await fn();
       set({
         plate: '',
         conn: 'idle',
@@ -167,6 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         simOn: false,
         simEnabled: false,
         selectedRoute: null,
+        selectedRouteIdx: 0,
       });
     } catch (err) {
       set({
@@ -194,8 +182,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       simOn: false,
       simEnabled: false,
       selectedRoute: null,
+      selectedRouteIdx: 0,
       isDisconnecting: false,
-      __abortController: null,
-      __telemetryInterval: null,
     }),
 }));

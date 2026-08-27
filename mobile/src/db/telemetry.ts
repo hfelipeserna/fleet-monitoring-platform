@@ -275,4 +275,85 @@ export async function markSynced(ids: string[]): Promise<void> {
   throw new Error('markSynced: no database adapter available');
 }
 
+export async function incrementAttempts(ids: string[], lastError: string): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const idSet = new Set(ids);
+  if (isMock()) {
+    for (const r of mockQueue) {
+      if (idSet.has(r.client_event_id) || idSet.has(r.id)) {
+        r.attempts = (r.attempts ?? 0) + 1;
+        r.last_error = lastError;
+        if (r.attempts >= 5) r.sync_status = 'failed';
+        else r.sync_status = 'pending';
+        if (r.attempts >= 5) r.synced_at = null;
+      }
+    }
+    return;
+  }
+  const db = database as unknown as {
+    write?: (fn: () => Promise<void>) => Promise<void>;
+    collections?: { get: (name: string) => unknown };
+  } | null;
+  if (db && db.write && db.collections) {
+    const col = db.collections.get('pending_telemetry') as unknown as {
+      query: (...args: unknown[]) => { fetch: () => Promise<Array<Record<string, unknown>>> };
+    };
+    await db.write(async () => {
+      const all = await col.query().fetch();
+      for (const r of all) {
+        const cid = (r as Record<string, unknown>).client_event_id as string | undefined;
+        const cid2 = (r as Record<string, unknown>).clientEventId as string | undefined;
+        const id = r.id as string | undefined;
+        if ((id && idSet.has(id)) || (cid && idSet.has(cid)) || (cid2 && idSet.has(cid2))) {
+          const cur = (r.attempts as number | undefined) ?? 0;
+          const next = cur + 1;
+          (r as Record<string, unknown>).attempts = next;
+          (r as Record<string, unknown>).last_error = lastError;
+          (r as Record<string, unknown>).lastError = lastError;
+          if (next >= 5) {
+            (r as Record<string, unknown>).sync_status = 'failed';
+            (r as Record<string, unknown>).syncStatus = 'failed';
+          }
+          if (typeof (r as unknown as { save?: () => Promise<void> }).save === 'function') {
+            await (r as unknown as { save: () => Promise<void> }).save();
+          } else if (typeof (r as unknown as { update?: (fn: (x: unknown) => void) => Promise<void> }).update === 'function') {
+            await (r as unknown as { update: (fn: (x: unknown) => void) => Promise<void> }).update((x: unknown) => {
+              const rec = x as Record<string, unknown>;
+              rec.attempts = next;
+              rec.last_error = lastError;
+              if (next >= 5) rec.sync_status = 'failed';
+            });
+          }
+        }
+      }
+    });
+    return;
+  }
+  const adapter = (database as unknown as Record<string, unknown>)?.adapter as Record<string, unknown> | undefined;
+  const exec = adapter?.unsafeExecute as ((o: unknown) => Promise<void>) | undefined;
+  if (exec && ids.length > 0) {
+    for (const id of ids) {
+      await exec({
+        sql: `UPDATE pending_telemetry SET attempts = attempts + 1, last_error = ?, sync_status = CASE WHEN attempts + 1 >= 5 THEN 'failed' ELSE 'pending' END WHERE id = ? OR client_event_id = ?`,
+        args: [lastError, id, id],
+      });
+    }
+    return;
+  }
+  throw new Error('incrementAttempts: no database adapter available');
+}
+
+export async function markFailed(ids: string[], lastError: string): Promise<void> {
+  await incrementAttempts(ids, lastError);
+}
+
 export const _mockQueue = mockQueue;
+
+export const telemetryPort = {
+  clearPending,
+  enqueue: (point: any) => enqueue(point) as unknown as Promise<void>,
+  getPending: (limit: number) => getPending(limit) as unknown as Promise<any[]>,
+  countPending: () => countPending(),
+  markSynced: (ids: string[]) => markSynced(ids),
+  incrementAttempts: (ids: string[], lastError: string) => incrementAttempts(ids, lastError),
+};

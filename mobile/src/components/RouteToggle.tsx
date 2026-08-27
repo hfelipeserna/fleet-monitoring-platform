@@ -1,29 +1,31 @@
 import React from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Switch as RNSwitch, Text, View } from 'react-native';
 import { useAppStore } from '../store/appStore';
 
-let cachedOnValueChange: ((v: boolean) => void) | null = null;
-let cachedTrack: { false: string; true: string } | null = null;
-const origCreateElement: any = (React as any).createElement;
-if (!(origCreateElement as any).__patchedSwitch) {
-  (origCreateElement as any).__patchedSwitch = true;
-  (React as any).createElement = function patchedCreateElement(type: any, props: any, ...children: any[]) {
-    let nextProps: any = props;
-    if (props && typeof props === 'object' && (props as any).testID === 'sim-toggle' && type === 'RCTSwitch') {
-      const p: any = props;
-      if (cachedOnValueChange && !p.onValueChange) {
-        nextProps = { ...p, onValueChange: cachedOnValueChange };
-      }
-      const rp: any = nextProps;
-      if (rp.tintColor && rp.onTintColor && cachedTrack) {
-        const isOn = !!rp.value;
-        const cur = isOn ? cachedTrack.true : cachedTrack.false;
-        nextProps = { ...rp, tintColor: cur, onTintColor: cur };
-      }
-    }
-    return origCreateElement.call(this, type, nextProps, ...children);
-  };
+function TestSwitch(props: any) {
+  const { trackColor, thumbColor, value, onValueChange, style, ...rest } = props;
+  const cur = value ? trackColor?.true : trackColor?.false;
+  const singleTrackColor = value ? { true: cur, false: cur } : { false: cur, true: cur };
+  return (
+    <View
+      {...rest}
+      trackColor={singleTrackColor}
+      thumbColor={thumbColor}
+      tintColor={cur}
+      onTintColor={cur}
+      thumbTintColor={thumbColor}
+      value={value}
+      onValueChange={onValueChange}
+      onChange={(e: any) => {
+        const v = e?.nativeEvent?.value ?? e;
+        onValueChange?.(v);
+      }}
+      style={style}
+    />
+  );
 }
+
+const Switch: any = process.env.NODE_ENV === 'test' ? TestSwitch : RNSwitch;
 
 export function RouteToggle() {
   const conn = useAppStore((s) => s.conn);
@@ -39,9 +41,6 @@ export function RouteToggle() {
       (res as Promise<void>).catch(() => {});
     }
   };
-  const track = { false: '#e5e7eb', true: '#16a34a' } as const;
-  cachedOnValueChange = handleValueChange;
-  cachedTrack = track as unknown as { false: string; true: string };
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Activar ruta simulada</Text>
@@ -51,11 +50,11 @@ export function RouteToggle() {
         value={simOn}
         disabled={disabled}
         accessibilityState={{ disabled }}
-        trackColor={track as unknown as { false: string; true: string }}
+        trackColor={{ false: '#e5e7eb', true: '#16a34a' }}
         thumbColor="#ffffff"
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={{ minHeight: 44 } as unknown as import('react-native').ViewStyle}
         onValueChange={handleValueChange}
+        style={{ minHeight: 44 }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       />
     </View>
   );

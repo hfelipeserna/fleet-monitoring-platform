@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+export const API_TIMEOUT_MS = 5000;
+
 const getBaseUrl = (): string => {
   const c = Constants as unknown as Record<string, unknown>;
   const extra =
@@ -17,38 +19,73 @@ const getBaseUrl = (): string => {
   return String(url).replace(/\/+$/, '');
 };
 
-export async function postTelemetry(event: unknown, opts?: { signal?: AbortSignal }): Promise<Response> {
-  const controller = opts?.signal ? null : new AbortController();
-  const signal = opts?.signal ?? (controller as unknown as AbortController).signal;
-  const timeout = controller ? setTimeout(() => (controller as unknown as AbortController).abort(), 5000) : null;
-  try {
-    const res = await fetch(`${getBaseUrl()}/v1/telemetry`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-      signal: signal as unknown as AbortSignal,
-    });
-    return res;
-  } finally {
-    if (timeout) clearTimeout(timeout);
+function getTimeoutSignal(): AbortSignal {
+  const ac = new AbortController();
+  setTimeout(() => {
+    try {
+      ac.abort();
+    } catch {}
+  }, API_TIMEOUT_MS);
+  if (typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout === 'function') {
+    void (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(API_TIMEOUT_MS);
   }
+  return ac.signal;
+}
+
+function getCombinedSignal(external?: AbortSignal): AbortSignal {
+  const timeoutSignal = getTimeoutSignal();
+  if (!external) return timeoutSignal;
+  const anyFn = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (typeof anyFn === 'function') return anyFn([external, timeoutSignal]);
+  const controller = new AbortController();
+  if (external.aborted || timeoutSignal.aborted) controller.abort();
+  else {
+    const onAbort = () => {
+      try {
+        controller.abort();
+      } catch {}
+    };
+    external.addEventListener('abort', onAbort, { once: true });
+    timeoutSignal.addEventListener('abort', onAbort, { once: true });
+  }
+  return controller.signal;
+}
+
+async function fetchWithSignal(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  return await new Promise<Response>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    fetch(url, { ...init, signal })
+      .then((res) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(res);
+      })
+      .catch((err) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      });
+  });
+}
+
+export async function postTelemetry(event: unknown, opts?: { signal?: AbortSignal }): Promise<Response> {
+  const signal = getCombinedSignal(opts?.signal);
+  return fetchWithSignal(`${getBaseUrl()}/v1/telemetry`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  }, signal);
 }
 
 export async function postBatch(events: unknown[], opts?: { signal?: AbortSignal }): Promise<Response> {
-  const controller = opts?.signal ? null : new AbortController();
-  const signal = opts?.signal ?? (controller as unknown as AbortController).signal;
-  const timeout = controller ? setTimeout(() => (controller as unknown as AbortController).abort(), 5000) : null;
-  try {
-    const res = await fetch(`${getBaseUrl()}/v1/telemetry/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events }),
-      signal: signal as unknown as AbortSignal,
-    });
-    return res;
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+  const signal = getCombinedSignal(opts?.signal);
+  return fetchWithSignal(`${getBaseUrl()}/v1/telemetry/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events }),
+  }, signal);
 }
 
 export { getBaseUrl };

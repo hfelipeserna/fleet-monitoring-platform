@@ -1,41 +1,44 @@
 import { useAppStore } from '../store/appStore';
+import { getTelemetryPort } from '../store/ports';
+import type { TelemetryPort } from '../store/ports';
 
 export type RouteKind = 'medellin' | 'bogota';
 export type RoutePoint = { lat: number; lon: number; speed: number };
 
-let simIdx = 0;
-
-export function nextSimPoint(route: Array<RoutePoint>): RoutePoint {
+export function nextSimPoint(route: Array<RoutePoint>, idx: number): RoutePoint {
   if (!route || route.length === 0) return { lat: 0, lon: 0, speed: 0 };
-  const pt = route[simIdx % route.length];
-  simIdx = (simIdx + 1) % route.length;
-  return pt;
+  return route[idx % route.length];
 }
 
 export function resetSimIdx(): void {
-  simIdx = 0;
+  useAppStore.setState({ selectedRouteIdx: 0 } as unknown as Record<string, unknown>);
 }
 
 export function getSimIdx(): number {
-  return simIdx;
+  return (useAppStore.getState() as unknown as { selectedRouteIdx: number }).selectedRouteIdx ?? 0;
 }
 
-export async function selectRoute(route: RouteKind): Promise<void> {
-  const { clearPending } = await import('../db/telemetry');
-  await clearPending();
-  simIdx = 0;
-  useAppStore.setState({ selectedRoute: route } as unknown as Record<string, unknown>);
+async function resolveClearPending(port?: TelemetryPort): Promise<() => Promise<void>> {
+  const injected = port ?? getTelemetryPort();
+  if (injected) return () => injected.clearPending();
+  const mod = await import('../db/telemetry');
+  return mod.clearPending as () => Promise<void>;
 }
 
-export async function toggleSim(v: boolean): Promise<void> {
+export async function selectRoute(route: RouteKind, telemetryPort?: TelemetryPort): Promise<void> {
+  const fn = await resolveClearPending(telemetryPort);
+  await fn();
+  useAppStore.setState({ selectedRoute: route, selectedRouteIdx: 0 } as unknown as Record<string, unknown>);
+}
+
+export async function toggleSim(v: boolean, telemetryPort?: TelemetryPort): Promise<void> {
   if (useAppStore.getState().conn !== 'connected') return;
   if (!v) {
-    const { clearPending } = await import('../db/telemetry');
+    const fn = await resolveClearPending(telemetryPort);
     try {
-      await clearPending();
+      await fn();
     } catch {}
-    simIdx = 0;
-    useAppStore.setState({ simOn: false, selectedRoute: null } as unknown as Record<string, unknown>);
+    useAppStore.setState({ simOn: false, selectedRoute: null, selectedRouteIdx: 0 } as unknown as Record<string, unknown>);
     return;
   }
   useAppStore.setState({ simOn: true } as unknown as Record<string, unknown>);
@@ -44,9 +47,11 @@ export async function toggleSim(v: boolean): Promise<void> {
 export function useSimulatedRoute() {
   const selectedRoute = useAppStore((s) => s.selectedRoute);
   const simOn = useAppStore((s) => s.simOn);
+  const selectedRouteIdx = useAppStore((s) => (s as unknown as { selectedRouteIdx: number }).selectedRouteIdx ?? 0);
   return {
     selectedRoute,
     simOn,
+    selectedRouteIdx,
     selectRoute,
     nextSimPoint,
     resetSimIdx,

@@ -8,12 +8,25 @@ import { RouteButtons } from './components/RouteButtons';
 import { useConnection } from './hooks/useConnection';
 import { useNetInfo } from './hooks/useNetInfo';
 import { useTelemetryGenerator } from './hooks/useTelemetryGenerator';
+import { useSync } from './hooks/useSync';
 import { useAppStore } from './store/appStore';
 import { initDatabase } from './db';
+import { injectTelemetryPort, injectIntervalPort } from './store/appStore';
+import { getTelemetryPort } from './store/ports';
+import { telemetryPort } from './db/telemetryPort';
+import { intervalRegistry } from './store/intervalRegistry';
+
+injectTelemetryPort(telemetryPort);
+injectIntervalPort({
+  register: (id: number) => intervalRegistry.register(id),
+  clear: (id: number) => intervalRegistry.clear(id),
+  clearAll: () => intervalRegistry.clearAll(),
+});
 
 export default function App() {
   useNetInfo();
   useTelemetryGenerator();
+  useSync();
   const { connect, disconnect: hookDisconnect } = useConnection();
   const conn = useAppStore((s) => s.conn);
   const plate = useAppStore((s) => s.plate);
@@ -45,8 +58,8 @@ export default function App() {
     let cancelled = false;
     const load = async () => {
       try {
-        const { countPending } = await import('./db/telemetry');
-        const c = await countPending();
+        const port = getTelemetryPort();
+        const c = port ? await port.countPending() : await (await import('./db/telemetry')).countPending();
         if (!cancelled) setPending(c);
       } catch {}
     };
@@ -70,8 +83,9 @@ export default function App() {
       await hookDisconnect();
     } finally {
       try {
-        const { countPending } = await import('./db/telemetry');
-        setPending(await countPending());
+        const port = getTelemetryPort();
+        const c = port ? await port.countPending() : await (await import('./db/telemetry')).countPending();
+        setPending(c);
       } catch {}
     }
   };
