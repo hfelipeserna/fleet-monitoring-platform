@@ -196,10 +196,7 @@ describe('StatusPanel', () => {
   describe('WatermelonDB schema + init (RED until mobile-expo creates files)', () => {
     it('has WatermelonDB schema pending_telemetry v1 with client_event_id', () => {
       // Arrange
-      let mod: any;
-
-      // Act
-      mod = require('../db/schema');
+      const mod: any = require('../db/schema');
 
       // Assert
       const dump = JSON.stringify(mod);
@@ -217,10 +214,7 @@ describe('StatusPanel', () => {
 
     it('has db/index that can init and return status OK/ERROR', async () => {
       // Arrange
-      let dbMod: any;
-
-      // Act
-      dbMod = require('../db/index');
+      const dbMod: any = require('../db/index');
 
       // Assert
       expect(dbMod).toBeDefined();

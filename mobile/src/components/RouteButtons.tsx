@@ -1,13 +1,7 @@
 import React from 'react';
-import { Pressable as RNPressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { useAppStore } from '../store/appStore';
 import { selectRoute } from '../hooks/useSimulatedRoute';
-
-function Pressable(props: any) {
-  const { onPress, ...rest } = props;
-  return <View {...rest} onPress={onPress} />;
-}
-void RNPressable;
 
 export function RouteButtons() {
   const simOn = useAppStore((s) => s.simOn);
@@ -21,11 +15,21 @@ export function RouteButtons() {
       <Pressable
         testID="route-medellin-btn"
         disabled={!simOn}
+        accessibilityRole="button"
         accessibilityState={{ disabled: !simOn }}
-        style={{ backgroundColor: medBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 } as unknown as import('react-native').ViewStyle}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={{
+          backgroundColor: medBg,
+          padding: 10,
+          borderRadius: 6,
+          opacity: !simOn ? 0.6 : 1,
+          minHeight: 44,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
         onPress={() => {
           if (!simOn) return;
-          void selectRoute('medellin');
+          selectRoute('medellin');
         }}
       >
         <Text>Ruta urbana Medellín</Text>
@@ -33,11 +37,21 @@ export function RouteButtons() {
       <Pressable
         testID="route-bogota-btn"
         disabled={!simOn}
+        accessibilityRole="button"
         accessibilityState={{ disabled: !simOn }}
-        style={{ backgroundColor: bogBg, padding: 10, borderRadius: 6, opacity: !simOn ? 0.6 : 1 } as unknown as import('react-native').ViewStyle}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={{
+          backgroundColor: bogBg,
+          padding: 10,
+          borderRadius: 6,
+          opacity: !simOn ? 0.6 : 1,
+          minHeight: 44,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
         onPress={() => {
           if (!simOn) return;
-          void selectRoute('bogota');
+          selectRoute('bogota');
         }}
       >
         <Text>Ruta urbana Bogotá</Text>
@@ -47,6 +61,3 @@ export function RouteButtons() {
 }
 
 export default RouteButtons;
-
-const styles = StyleSheet.create({});
-void styles;

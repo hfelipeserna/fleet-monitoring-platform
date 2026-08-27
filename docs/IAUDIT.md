@@ -399,6 +399,14 @@ Por qué falla: Viola Clean Arch `infra` mutando primitiva lenguaje, SOLID OCP, 
 Refactor exigido: Eliminado `defineProperty`/`makeWrappedSet`→ clase pura `IntervalRegistry` sin `globalThis`, `RouteToggle` 1 único `Switch` con `trackColor` nativo sin `@ts-ignore`, `simIdx`→ `appStore.selectedRouteIdx` + `nextSimPoint(route,idx)` puro, `nextGpsPoint`→ `expo-location.getCurrentPositionAsync` con permiso guard, `TelemetryPort`/`IntervalPort` en `store/ports.ts` inyectado en `App.tsx` composition root, `lib/sync.ts` `flushPending 500` + `hooks/useSync.ts` `5s/50` `Retry-After`+`5s*2^n cap60+jitter`+`attempts>=5->failed`, timeout único `API_TIMEOUT_MS=5000` con `AbortSignal.timeout`, `store.connect`→ setters puros SSOT `useConnection`. `npm test 145/145 PASS`, `tsc 0`, `intervalRegistry` `clearAll` iterando solo `ids` propios. Commit refactor(mobile) integral.
 Auditor: reviewer | quality-auditor | security | scalability | architect
 
+## 2026-08-27 — Auditoría: mobile RouteButtons View-as-Pressable + lint bypass [SPEC-005 TASK-005-09]
+Severidad: alta
+Hallazgo: IA generó `RouteButtons` con `function Pressable(props:any){ return <View onPress> }` + `void RNPressable` y `mobile/package.json` con `lint: eslint ... || echo` sin `.eslintrc`, y `lib/api.ts` con doble `AbortController`+`setTimeout` sin `clearTimeout` + `Appfile` hardcode `fleet.ci@example.com`.
+Evidencia: mobile/src/components/RouteButtons.tsx:2-9 View+onPress, mobile/package.json:13 `|| echo`, mobile/src/lib/api.ts:22 `setTimeout` sin clear, fastlane/Appfile:1 hardcode (pre fix, ver git diff 08ebbda^)
+Por qué falla: `View.onPress` no dispara en RN (requiere `Pressable`), `disabled` fantasma → `AC-006` no funcional en device, `lint || echo` siempre verde oculta `any` en `flushPending 500` hot path, doble timer `5s` desperdicia 2 timers/req bajo 1k msg/s y leak `addEventListener` sin remove, `Appfile` hardcode obliga fork por team. Viola WCAG 2.5.5, `AGENTS.md` lint gate, `12-factor` env.
+Refactor exigido: `RouteButtons` → `Pressable` nativo con `disabled/hitSlop/minHeight44`, `.eslintrc.json` real con `@typescript-eslint/no-explicit-any:error` y `lint` sin `|| echo` + `eslint` devDeps, `api.ts` timeout único `AbortSignal.timeout(API_TIMEOUT_MS)` con `clearTimeout` en `finally`, `Appfile` → `ENV["APP_IDENTIFIER"]`. `npm test 187/187 PASS`, `tsc 0`, `npm run lint 0`, `docker compose config -q 0`. Commit refactor(mobile) TASK-005-09.
+Auditor: reviewer | quality-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,

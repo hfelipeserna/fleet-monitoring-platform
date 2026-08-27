@@ -1,6 +1,7 @@
 import { postBatch } from './api';
 import { getTelemetryPort } from '../store/ports';
 import type { TelemetryPort } from '../store/ports';
+import type { TelemetryRecord } from '../db/telemetry';
 import { useAppStore } from '../store/appStore';
 
 let globalAttempts = 0;
@@ -20,9 +21,9 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
 
   const port = opts?.port ?? getTelemetryPort();
 
-  let pending: any[];
+  let pending: TelemetryRecord[];
   if (port?.getPending) {
-    pending = await port.getPending(50);
+    pending = (await port.getPending(50)) as TelemetryRecord[];
   } else {
     const mod = await import('../db/telemetry');
     pending = await mod.getPending(50);
@@ -34,16 +35,16 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  const events = pending.slice(0, 50).map((p: any) => ({
+  const events = pending.slice(0, 50).map((p: TelemetryRecord) => ({
     plate: p.plate,
     lat: p.lat ?? null,
     lon: p.lon ?? null,
     speed: p.speed ?? 0,
-    client_event_id: p.client_event_id ?? p.clientEventId ?? p.id,
+    client_event_id: p.client_event_id ?? (p as unknown as { clientEventId?: string }).clientEventId ?? p.id,
     occurred_at:
       typeof p.occurred_at === 'number'
         ? new Date(p.occurred_at).toISOString()
-        : p.occurred_at ?? new Date().toISOString(),
+        : (p.occurred_at as unknown as string) ?? new Date().toISOString(),
   }));
 
   const res = await postBatch(events, opts?.signal ? { signal: opts.signal } : undefined);
@@ -59,7 +60,7 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
       else if (body.accepted === true) accepted = pending.length;
       else if (body.accepted === false) accepted = 0;
     } catch {}
-    const ids = pending.slice(0, accepted).map((p: any) => p.client_event_id ?? p.clientEventId ?? p.id);
+    const ids = pending.slice(0, accepted).map((p: TelemetryRecord) => p.client_event_id ?? (p as unknown as { clientEventId?: string }).clientEventId ?? p.id);
     if (port?.markSynced) {
       await port.markSynced(ids);
     } else {
@@ -82,7 +83,7 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
     const prevAttempts = globalAttempts;
     globalAttempts += 1;
     const lastError = `${res.status} backpressure`;
-    const ids = pending.map((p: any) => p.client_event_id ?? p.clientEventId ?? p.id);
+    const ids = pending.map((p: TelemetryRecord) => p.client_event_id ?? (p as unknown as { clientEventId?: string }).clientEventId ?? p.id);
     try {
       if (port?.incrementAttempts) {
         await port.incrementAttempts(ids, lastError);

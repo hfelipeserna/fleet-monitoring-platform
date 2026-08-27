@@ -25,7 +25,15 @@ export function PlateInput({ onConnect }: PlateInputProps) {
       <Pressable
         testID="connect-btn"
         disabled={!valid}
-        style={{ backgroundColor: valid ? '#86efac' : '#e5e7eb' }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={{
+          backgroundColor: valid ? '#86efac' : '#e5e7eb',
+          minHeight: 44,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 12,
+          borderRadius: 8,
+        }}
         onPress={() => {
           if (!valid) return;
           onConnect(plate);

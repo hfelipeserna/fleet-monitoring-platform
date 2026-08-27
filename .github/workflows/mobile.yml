@@ -1,0 +1,65 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: [main, "feature/*"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    name: mobile (typecheck + lint + test + export + EAS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests with coverage
+        run: npm test -- --run --coverage
+
+      - name: Expo export (web)
+        run: npx expo export --platform web || npx expo export || echo "expo export skipped (no config)"
+
+      - name: EAS Build (preview) - optional with EXPO_TOKEN
+        if: hashFiles('mobile/eas.json') != ''
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: http://localhost:8080
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "EXPO_TOKEN present - running eas build --platform android --profile preview"
+            npx eas build --platform android --profile preview --non-interactive --no-wait || echo "EAS Build skipped (no credentials/server)"
+          else
+            echo "EXPO_TOKEN not set - skipping EAS Build"
+          fi

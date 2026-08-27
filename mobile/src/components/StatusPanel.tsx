@@ -19,18 +19,18 @@ export function StatusPanel(props: StatusPanelProps) {
 
   return (
     <View>
-      <Text testID="sync-status" style={{ color: '#dc2626' }}>
+      <Text testID="sync-status" style={{ color: '#dc2626', fontFamily: 'Sketch' }}>
         {`Syncing data ... ${sync}`}
       </Text>
       <Text
         testID="db-status"
-        style={{ color: db === 'OK' ? '#16a34a' : '#dc2626' }}
+        style={{ color: db === 'OK' ? '#16a34a' : '#dc2626', fontFamily: 'Sketch' }}
       >
         {`WatermelonDB status ○ ${db}`}
       </Text>
       <Text
         testID="net-status"
-        style={{ color: net === 'OK' ? '#16a34a' : '#dc2626' }}
+        style={{ color: net === 'OK' ? '#16a34a' : '#dc2626', fontFamily: 'Sketch' }}
       >
         {`Network connectivity ○ ${net}`}
       </Text>

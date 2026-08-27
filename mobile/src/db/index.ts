@@ -4,7 +4,7 @@ type DbStatus = 'OK' | 'ERROR';
 
 let initPromise: Promise<DbStatus> | null = null;
 let database: unknown = null;
-let dbStatus: DbStatus = 'OK';
+let _dbStatus: DbStatus = 'OK';
 
 async function tryInitWatermelon(): Promise<unknown> {
   const isJest =
@@ -55,15 +55,15 @@ export async function initDatabase(): Promise<DbStatus> {
     try {
       const db = await tryInitWatermelon();
       database = db;
-      dbStatus = 'OK';
+      _dbStatus = 'OK';
       return 'OK' as DbStatus;
     } catch (err) {
       database = null;
-      dbStatus = 'ERROR';
+      _dbStatus = 'ERROR';
       throw err;
     }
   })().catch(() => {
-    dbStatus = 'ERROR';
+    _dbStatus = 'ERROR';
     database = null;
     return 'ERROR' as DbStatus;
   }) as Promise<DbStatus>;

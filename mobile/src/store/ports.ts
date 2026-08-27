@@ -1,7 +1,7 @@
 export interface TelemetryPort {
   clearPending(): Promise<void>;
-  enqueue(point: any): Promise<void>;
-  getPending(limit: number): Promise<any[]>;
+  enqueue(point: unknown): Promise<void>;
+  getPending(limit: number): Promise<unknown[]>;
   countPending(): Promise<number>;
   markSynced?(ids: string[]): Promise<void>;
   incrementAttempts?(ids: string[], lastError: string): Promise<void>;

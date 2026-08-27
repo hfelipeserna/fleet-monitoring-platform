@@ -2,30 +2,39 @@ import React from 'react';
 import { StyleSheet, Switch as RNSwitch, Text, View } from 'react-native';
 import { useAppStore } from '../store/appStore';
 
-function TestSwitch(props: any) {
+type TestSwitchProps = {
+  trackColor?: { true?: string; false?: string };
+  thumbColor?: string;
+  value?: boolean;
+  onValueChange?: (v: boolean) => void;
+  style?: unknown;
+  [key: string]: unknown;
+};
+
+function TestSwitch(props: TestSwitchProps) {
   const { trackColor, thumbColor, value, onValueChange, style, ...rest } = props;
   const cur = value ? trackColor?.true : trackColor?.false;
   const singleTrackColor = value ? { true: cur, false: cur } : { false: cur, true: cur };
-  return (
-    <View
-      {...rest}
-      trackColor={singleTrackColor}
-      thumbColor={thumbColor}
-      tintColor={cur}
-      onTintColor={cur}
-      thumbTintColor={thumbColor}
-      value={value}
-      onValueChange={onValueChange}
-      onChange={(e: any) => {
-        const v = e?.nativeEvent?.value ?? e;
-        onValueChange?.(v);
-      }}
-      style={style}
-    />
-  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const viewProps = {
+    ...rest,
+    trackColor: singleTrackColor,
+    thumbColor,
+    tintColor: cur,
+    onTintColor: cur,
+    thumbTintColor: thumbColor,
+    value,
+    onValueChange,
+    onChange: (e: unknown) => {
+      const v = (e as { nativeEvent?: { value?: boolean } })?.nativeEvent?.value ?? (e as boolean);
+      onValueChange?.(v);
+    },
+    style: style as object,
+  } as unknown as Record<string, unknown>;
+  return React.createElement(View as unknown as React.ComponentType<Record<string, unknown>>, viewProps);
 }
 
-const Switch: any = process.env.NODE_ENV === 'test' ? TestSwitch : RNSwitch;
+const Switch = (process.env.NODE_ENV === 'test' ? TestSwitch : RNSwitch) as typeof RNSwitch;
 
 export function RouteToggle() {
   const conn = useAppStore((s) => s.conn);

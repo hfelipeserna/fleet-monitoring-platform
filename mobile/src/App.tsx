@@ -99,7 +99,17 @@ export default function App() {
           <Pressable
             testID="disconnect-btn"
             disabled={isDisconnecting}
-            style={{ backgroundColor: '#f9a8d4', padding: 12, borderRadius: 8, marginTop: 8, opacity: isDisconnecting ? 0.6 : 1 }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{
+              backgroundColor: '#f9a8d4',
+              padding: 12,
+              borderRadius: 8,
+              marginTop: 8,
+              opacity: isDisconnecting ? 0.6 : 1,
+              minHeight: 44,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
             onPress={handleDisconnect}
           >
             <Text>Disconnect</Text>
@@ -133,6 +143,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     marginBottom: 12,
+    fontFamily: 'Sketch',
   },
   pending: {
     marginTop: 12,
