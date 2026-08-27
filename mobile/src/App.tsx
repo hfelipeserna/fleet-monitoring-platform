@@ -3,10 +3,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { PlateInput } from './components/PlateInput';
 import { StatusPanel } from './components/StatusPanel';
+import { RouteToggle } from './components/RouteToggle';
 import { useConnection } from './hooks/useConnection';
 import { useNetInfo } from './hooks/useNetInfo';
 import { useAppStore } from './store/appStore';
-import { intervalRegistry } from './store/intervalRegistry';
 import { initDatabase } from './db';
 
 export default function App() {
@@ -15,10 +15,8 @@ export default function App() {
   const conn = useAppStore((s) => s.conn);
   const plate = useAppStore((s) => s.plate);
   const simOn = useAppStore((s) => s.simOn);
-  const simEnabled = useAppStore((s) => s.simEnabled);
   const selectedRoute = useAppStore((s) => s.selectedRoute);
   const isDisconnecting = useAppStore((s) => s.isDisconnecting);
-  const setSimOn = useAppStore((s) => s.setSimOn);
   const setRoute = (r: 'medellin' | 'bogota' | null) => useAppStore.setState({ selectedRoute: r } as unknown as Record<string, unknown>);
   const [pending, setPending] = useState(0);
 
@@ -77,8 +75,6 @@ export default function App() {
     }
   };
 
-  const toggleDisabled = !simEnabled;
-  const toggleBg = !simEnabled ? '#e5e7eb' : simOn ? '#86efac' : '#e5e7eb';
   const medBg = !simOn ? '#e5e7eb' : selectedRoute === 'medellin' ? '#86efac' : '#93c5fd';
   const bogBg = !simOn ? '#e5e7eb' : selectedRoute === 'bogota' ? '#86efac' : '#93c5fd';
 
@@ -101,29 +97,8 @@ export default function App() {
         <PlateInput onConnect={handleConnect} />
       )}
       <StatusPanel />
-      <Pressable
-        testID="sim-toggle"
-        disabled={toggleDisabled}
-        accessibilityState={{ disabled: toggleDisabled }}
-        style={{ backgroundColor: toggleBg, padding: 10, borderRadius: 6, marginTop: 10, opacity: toggleDisabled ? 0.6 : 1 }}
-        onPress={() => {
-          if (toggleDisabled) return;
-          const next = !simOn;
-          setSimOn(next);
-          if (!next) {
-            setRoute(null);
-            const iid = useAppStore.getState().__telemetryInterval;
-            if (iid) {
-              intervalRegistry.clear(iid);
-              useAppStore.setState({ __telemetryInterval: null } as unknown as Record<string, unknown>);
-            } else {
-              intervalRegistry.clearAll();
-            }
-          }
-        }}
-      >
-        <Text>{`Activar ruta simulada ${simOn ? 'ON' : 'OFF'}`}</Text>
-      </Pressable>
+      <RouteToggle />
+      <Text style={{ marginTop: 8 }}>{`Activar ruta simulada ${simOn ? 'ON' : 'OFF'}`}</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
         <Pressable
           testID="route-medellin-btn"

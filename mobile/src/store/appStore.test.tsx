@@ -322,4 +322,125 @@ describe('appStore', () => {
       expect(useAppStore.getState().selectedRoute).toBeNull();
     });
   });
+
+  // Covers [SPEC-005: AC-005] FR-005 BR-006 TS-005 — Toggle Activar ruta simulada OFF/ON simOn guard suite RED
+  describe('Toggle Activar ruta simulada simOn AC-005 FR-005 BR-006', () => {
+    beforeEach(() => {
+      // Arrange - reset to idle
+      useAppStore.getState().reset();
+    });
+
+    it('idle -> OFF gris disabled: simOn false y simEnabled false cuando idle', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'idle', simOn: false, simEnabled: false } as any);
+
+      // Act
+      const st = useAppStore.getState();
+
+      // Assert
+      expect(st.conn).toBe('idle');
+      expect(st.simOn).toBe(false);
+      expect(st.simEnabled).toBe(false);
+    });
+
+    it('connected OFF -> habilitado gris: simEnabled true cuando connected y simOn false', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'idle', simOn: false, simEnabled: false } as any);
+
+      // Act
+      act(() => {
+        useAppStore.setState({ conn: 'connected', simEnabled: true } as any);
+      });
+
+      // Assert
+      const st = useAppStore.getState();
+      expect(st.conn).toBe('connected');
+      expect(st.simOn).toBe(false);
+      expect(st.simEnabled).toBe(true);
+    });
+
+    it('no permite simOn=true cuando idle (guard: conn !== connected)', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'idle', simOn: false, simEnabled: false } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().setSimOn(true);
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(false);
+      expect(useAppStore.getState().conn).toBe('idle');
+    });
+
+    it('no permite simOn=true cuando connecting (guard)', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'connecting', simOn: false } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().setSimOn(true);
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(false);
+    });
+
+    it('no permite simOn=true cuando error (guard)', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'error', simOn: false } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().setSimOn(true);
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(false);
+    });
+
+    it('permite simOn=true cuando connected (OFF->ON)', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'connected', simOn: false, simEnabled: true } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().setSimOn(true);
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(true);
+      expect(useAppStore.getState().conn).toBe('connected');
+    });
+
+    it('ON->OFF vuelve simOn false y habilita rutas gris deshabilitadas', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, selectedRoute: 'medellin' as any } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().setSimOn(false);
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(false);
+      expect(useAppStore.getState().conn).toBe('connected');
+    });
+
+    it('reset a idle deja simOn false y simEnabled false y selectedRoute null', () => {
+      // Arrange
+      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, selectedRoute: 'bogota' as any } as any);
+
+      // Act
+      act(() => {
+        useAppStore.getState().reset();
+      });
+
+      // Assert
+      expect(useAppStore.getState().simOn).toBe(false);
+      expect(useAppStore.getState().simEnabled).toBe(false);
+      expect(useAppStore.getState().selectedRoute).toBeNull();
+      expect(useAppStore.getState().conn).toBe('idle');
+    });
+  });
 });
