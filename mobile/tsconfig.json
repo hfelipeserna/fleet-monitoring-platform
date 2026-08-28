@@ -13,6 +13,6 @@
     "resolveJsonModule": true,
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*"],
+  "include": ["App.tsx", "index.js", "src/**/*"],
   "exclude": ["node_modules", "**/__mocks__/**", "**/coverage/**"]
 }
