@@ -407,6 +407,22 @@ Por qué falla: `View.onPress` no dispara en RN (requiere `Pressable`), `disable
 Refactor exigido: `RouteButtons` → `Pressable` nativo con `disabled/hitSlop/minHeight44`, `.eslintrc.json` real con `@typescript-eslint/no-explicit-any:error` y `lint` sin `|| echo` + `eslint` devDeps, `api.ts` timeout único `AbortSignal.timeout(API_TIMEOUT_MS)` con `clearTimeout` en `finally`, `Appfile` → `ENV["APP_IDENTIFIER"]`. `npm test 187/187 PASS`, `tsc 0`, `npm run lint 0`, `docker compose config -q 0`. Commit refactor(mobile) TASK-005-09.
 Auditor: reviewer | quality-auditor | architect
 
+## 2026-08-28 — Auditoría: mobile SDK 52→54 TS 7.0.2 rompe Metro + sdkVersion deprecated [SPEC-005 TASK-005-54]
+Severidad: media
+Hallazgo: IA `mobile-expo` propuso `npx expo install expo@54.0.12 jest-expo@54.0.12` con `npm install typescript@latest` → TS 7.0.2 + `mobile/tsconfig.json` con `moduleResolution node` y `baseUrl .` + `sdkVersion` retenido, copiado de template Expo 54 sin validar compatibilidad `@expo/cli 0.22.28`.
+Evidencia: mobile/package.json:38 `typescript 7.0.2`, mobile/tsconfig.json:8 `moduleResolution node10`, :9 `baseUrl .`, mobile/app.json:8 `sdkVersion 54.0.0` (pre commit 6768ce1, ver git log 08ebbda^..bc46ced)
+Por qué falla: TS 7.0.2 cambia `ts.getCurrentDirectory` API y `@expo/cli/evaluateTsConfig` hace `ts.getCurrentDirectory()` sin arg → `TypeError: getCurrentDirectory is not a function` y `npx expo start --go` aborta; `moduleResolution node10` + `baseUrl` es deprecado en TS 7 (`ignoreDeprecations 6.0` inválido en 5.9.3) y rompe `expo/tsconfig.base` bundler; `sdkVersion` es legacy en SDK 54 (Expo lo infiere de `expo` dep) y genera warning `expo-doctor` + EAS. Viola AGENTS.md `docker compose config` gate y NFR-002 DX.
+Refactor exigido: Pin `typescript 5.9.3` (SDK 54 exige 5.9+ no 7), `tsconfig` con `module ESNext` + `moduleResolution bundler` sin `baseUrl/ignoreDeprecations`, `sdkVersion` documentado como deuda media (quitar en próximo chore, ver auditoría mobile-auditor M1). `npx expo start --go` OK sin TypeError, `tsc --noEmit 0`, `expo config sdkVersion 54.0.0` inferida. Commit 6768ce1 + df6baf2 + bc46ced.
+Auditor: quality-auditor | mobile-auditor | architect
+
+## 2026-08-28 — Auditoría: mobile SDK 52→54 React 19 + Watermelon JSI fallback silencioso [SPEC-005 TASK-005-54]
+Severidad: media
+Hallazgo: IA sugirió `react 18.3.1` con `expo 54.0.12` (peer mismatch `react 19.1.0` requerido) y `WatermelonDB` con `try SQLiteAdapter jsi:true catch LokiJSAdapter` silencioso + `babel-plugin-dynamic-import-node` global y `react-native-get-random-values` triplicado, heredado de SDK 52 sin auditar New Architecture RN 0.81.
+Evidencia: mobile/package.json:14 `react 18.3.1`, mobile/src/db/index.ts:33 `try SQLiteAdapter` `catch LokiJS` sin log, babel.config.js:5 `plugins dynamic-import-node`, mobile/src/db/telemetry.ts:1 + hooks/useConnection.ts:1 `import react-native-get-random-values` (pre fix, ver mobile-auditor ses_fb9e9b58 y quality-auditor ses_fb9e4f0d)
+Por qué falla: Expo Go 54 exige tríada `expo 54 / RN 0.81.5 / react 19.1.0` (bundledNativeModules.json); mismatch `18.3.1` da `expo install --fix ERESOLVE` y warning SDK 54. Watermelon `Untested on New Architecture` con fallback silencioso pierde durabilidad `245 persist` (LokiJS memory no IndexedDB) y `useWebWorker:false` bloquea JS thread `O(50)` flush 5s. `dynamic-import-node` transpila `import()`→`require` rompe tree-shaking `await import telemetry` y `getRandomValues` sin mantenimiento desde 2021 duplica side-effect 3×. Viola NFR-002 offline→sync y AGENTS.md 16GB.
+Refactor exigido: Upgrade `react 19.1.0 + react-native 0.81.5 + jest-expo 54.0.12 + expo-* 18/19/16 + babel-preset-expo 54`, `@testing-library/react-native 13.3.3` + `@types/react 19.1.10` para `act` React 19, `expo-sqlite 16.0.10` alineado, mantener `WatermelonDB@0.27.1` con fallback LokiJS solo para Jest (`isJest` guard) + `expo.doctor.exclude` en próximo chore, `babel env.test` para plugin, `expo-standard-web-crypto` como deuda futura. `npm test 187/187 PASS`, `expo install --check Dependencies are up to date`, `expo-doctor 17/18`. Commit SDK54.
+Auditor: mobile-auditor | quality-auditor | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
