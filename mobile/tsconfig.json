@@ -11,8 +11,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
-    "types": ["jest", "node"],
-    "ignoreDeprecations": "6.0"
+    "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/__mocks__/**", "**/coverage/**"]
