@@ -69,15 +69,27 @@ export function useConnection(intervalPort?: IntervalPort) {
       const res = (await postTelemetry(event as unknown, { signal: controller.signal })) as Response;
       if (res.status === 202) {
         useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', simEnabled: true });
+      } else if (res.status === 503) {
+        useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
+      } else if (res.status === 429 || res.status === 400) {
+        useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
       } else {
         useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
       }
-    } catch {
+    } catch (e: unknown) {
       if (controller.signal.aborted) {
         const cur = useAppStore.getState().conn;
         if (cur === 'idle') return;
       }
-      useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
+      const err = e as { name?: string; message?: string };
+      const isAbort = err?.name === 'AbortError' || controller.signal.aborted;
+      const isNetwork = !isAbort && (err?.message?.toLowerCase().includes('network') || err?.message?.toLowerCase().includes('failed to fetch') || err?.message?.toLowerCase().includes('load failed') || err instanceof TypeError);
+      if (isNetwork) {
+        console.warn('[conn] network error, keep CONNECTING for retry', err?.message);
+        useAppStore.setState({ conn: 'connecting', sync: 'CONNECTING', simEnabled: false });
+      } else {
+        useAppStore.setState({ conn: 'error', sync: 'ERROR', simEnabled: false });
+      }
     } finally {
       abortRef.current = null;
     }

@@ -29,7 +29,17 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
     pending = await mod.getPending(50);
   }
 
-  if (!pending || pending.length === 0) return 0;
+  if (!pending || pending.length === 0) {
+    globalAttempts = 0;
+    try {
+      const { net, db, conn } = useAppStore.getState();
+      if (db === 'OK' && net === 'OK' && conn === 'connected') {
+        const cur = useAppStore.getState().sync;
+        if (cur !== 'CONNECTED') useAppStore.getState().setSync('CONNECTED');
+      }
+    } catch {}
+    return 0;
+  }
 
   if (opts?.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');

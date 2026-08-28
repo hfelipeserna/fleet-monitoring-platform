@@ -7,15 +7,19 @@ const getBaseUrl = (): string => {
   const extra =
     (c.expoConfig as { extra?: Record<string, unknown> } | undefined)?.extra ??
     (c.default as { expoConfig?: { extra?: Record<string, unknown> } } | undefined)?.expoConfig?.extra ??
+    (c.manifest as { extra?: Record<string, unknown> } | undefined)?.extra ??
     {};
   const g = globalThis as unknown as Record<string, unknown>;
-  const rawEnv =
+  const rawEnvDirect = (process.env as Record<string, unknown> | undefined)?.EXPO_PUBLIC_API_URL as string | undefined;
+  const rawEnvGlobal =
     ((g.process as Record<string, unknown> | undefined)?.env as Record<string, unknown> | undefined)?.EXPO_PUBLIC_API_URL as
       | string
       | undefined;
-  const envUrl = rawEnv && rawEnv !== 'undefined' && rawEnv !== '' ? rawEnv : undefined;
+  const rawEnv = rawEnvDirect ?? rawEnvGlobal;
+  const envUrl = rawEnv && rawEnv !== 'undefined' && rawEnv !== '' ? String(rawEnv).trim() : undefined;
   const extraUrl = (extra as Record<string, unknown>).apiUrl as string | undefined;
-  const url = (extraUrl && extraUrl !== 'undefined' ? extraUrl : undefined) ?? envUrl ?? 'http://localhost:8080';
+  const normalizedExtra = extraUrl && extraUrl !== 'undefined' && String(extraUrl).trim() !== '' ? String(extraUrl).trim() : undefined;
+  const url = envUrl ?? normalizedExtra ?? 'http://localhost:8080';
   return String(url).replace(/\/+$/, '');
 };
 

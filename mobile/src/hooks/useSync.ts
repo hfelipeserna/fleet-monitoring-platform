@@ -46,7 +46,16 @@ export function useSync(): void {
         return;
       }
 
-      if (pendingCount === 0) return;
+      if (pendingCount === 0) {
+        try {
+          const { net: curNet2, conn: curConn2, db: curDb, sync: curSync } = useAppStore.getState();
+          if (curDb === 'OK' && curNet2 === 'OK' && curConn2 === 'connected' && curSync !== 'CONNECTED') {
+            useAppStore.getState().setSync('CONNECTED');
+          }
+          retryAttemptsRef.current = 0;
+        } catch {}
+        return;
+      }
 
       if (abortRef.current) {
         try {
@@ -61,12 +70,29 @@ export function useSync(): void {
         const port = getTelemetryPort() ?? undefined;
         const n = await flushPending({ port, signal: controller.signal });
         if (n > 0) retryAttemptsRef.current = 0;
+        if (n === 0) {
+          try {
+            const { net: curNet3, conn: curConn3, db: curDb3 } = useAppStore.getState();
+            if (curDb3 === 'OK' && curNet3 === 'OK' && curConn3 === 'connected') {
+              const curSync3 = useAppStore.getState().sync;
+              if (curSync3 !== 'CONNECTED') useAppStore.getState().setSync('CONNECTED');
+            }
+          } catch {}
+        }
       } catch (e: unknown) {
         const err = e as { name?: string; retryAfter?: number; status?: number; backoffMs?: number };
         if (controller.signal.aborted || err?.name === 'AbortError') return;
         if (err?.status === 503) {
           try {
             useAppStore.getState().setSync('ERROR');
+          } catch {}
+        } else if (typeof err?.status === 'undefined') {
+          try {
+            const { db: curDb4, net: curNet4, conn: curConn4 } = useAppStore.getState();
+            if (curDb4 === 'OK' && curNet4 === 'OK' && curConn4 === 'connected') {
+              const curSync4 = useAppStore.getState().sync;
+              if (curSync4 === 'ERROR') useAppStore.getState().setSync('CONNECTED');
+            }
           } catch {}
         }
         if (err?.status === 429 || err?.status === 503 || typeof err?.retryAfter === 'number') {
@@ -129,10 +155,19 @@ export function useSync(): void {
     }, 5000);
 
     const unsub = useAppStore.subscribe((state, prev) => {
-      if (state.net === 'OK' && state.conn === 'connected' && (prev.net !== 'OK' || prev.conn !== 'connected')) {
+      if (state.net === 'OK' && state.conn === 'connected' && (prev.net !== 'OK' || prev.conn !== 'connected' || prev.db !== 'OK' || prev.sync === 'ERROR')) {
         clearBackoff();
         retryAttemptsRef.current = 0;
         void doFlush();
+      }
+      if (state.db === 'OK' && state.net === 'OK' && state.conn === 'connected' && state.sync === 'ERROR') {
+        void (async () => {
+          try {
+            const port = getTelemetryPort();
+            const c = port ? await port.countPending() : await (await import('../db/telemetry')).countPending();
+            if (c === 0) useAppStore.getState().setSync('CONNECTED');
+          } catch {}
+        })();
       }
     });
 
