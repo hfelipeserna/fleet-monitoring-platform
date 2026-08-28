@@ -49,7 +49,7 @@ export async function flushPending(opts?: { port?: TelemetryPort; signal?: Abort
     plate: p.plate,
     lat: p.lat ?? null,
     lon: p.lon ?? null,
-    speed: p.speed ?? 0,
+    speed: Math.round(p.speed ?? 0),
     client_event_id: p.client_event_id ?? (p as unknown as { clientEventId?: string }).clientEventId ?? p.id,
     occurred_at:
       typeof p.occurred_at === 'number'

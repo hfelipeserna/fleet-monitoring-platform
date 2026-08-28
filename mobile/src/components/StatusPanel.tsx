@@ -19,8 +19,14 @@ export function StatusPanel(props: StatusPanelProps) {
 
   return (
     <View>
-      <Text testID="sync-status" style={{ color: '#dc2626', fontFamily: 'Sketch' }}>
-        {`Syncing data ... ${sync}`}
+      <Text
+        testID="sync-status"
+        style={{
+          color: sync === 'CONNECTED' ? '#16a34a' : sync === 'IDLE' ? '#111827' : '#dc2626',
+          fontFamily: 'Sketch',
+        }}
+      >
+        {`Syncing data ${sync}`}
       </Text>
       <Text
         testID="db-status"

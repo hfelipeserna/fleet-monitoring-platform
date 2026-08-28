@@ -43,7 +43,7 @@ Imágenes de referencia (6 wireframes adjuntos) definen la fidelidad UX: `Plate`
 - Nuevos endpoints backend (reusa `SPEC-001` `POST /v1/telemetry` y `/batch` `202/400/429/503`, `GET /healthz`).
 - Auth JWT / `X-Device-Token` HMAC en MVP (reservado, `security: []` como SPEC-001; deuda prod documentada).
 - Edición geométrica de zonas, mapa en el móvil, chat IA en el móvil.
-- Background fetch agresivo iOS/Android (se acumula y flushea en foreground; no loop en bg).
+- Background fetch agresivo iOS/Android (se acumula y flushea en foreground; no loop en bg). **Posición/velocidad en background vía `watchPositionAsync` con `Accuracy.High` a 1Hz, pero enqueue a backend sigue cada 5s del último fix (no streaming continuo 1Hz a red).**
 - Vector DB / RAG, push notifications.
 - Terraform prod y k6 caos (SPEC-005 no los crea, solo consume `202` para estado).
 
@@ -147,7 +147,7 @@ Imágenes de referencia (6 wireframes adjuntos) definen la fidelidad UX: `Plate`
 | FR-004 | `Disconnect` limpia `pending_telemetry`, aborta `fetch`, detiene intervalo, limpia input `""`, deshabilita `Activar ruta simulada` y rutas (grises) | UC-003 | must |
 | FR-005 | `Activar ruta simulada` toggle `OFF` gris deshabilitado si no `connected`; en `connected` habilitado `OFF`; `ON` habilita rutas azules | UC-004 | must |
 | FR-006 | Toggle `ON -> OFF` limpia buffer y cambia a GPS real (`expo-location`); `OFF -> ON` habilita rutas; seleccionar ruta limpia buffer previo y reinicia secuencia desde 0 | UC-004 | must |
-| FR-007 | Rutas predeterminadas: `Medellín` y `Bogotá` ~20 puntos cada una, `lat/lon` reales, `speed` variado `0/45/85` para `speeding_on/off` y `zone_enter/exit`; generación cada `5s`, flush batch cada `5s` o `>=50` pendientes, `POST /batch 1..500` con `client_event_id` uuid; placa se mantiene al cambiar ruta | UC-004 | must |
+| FR-007 | Rutas predeterminadas: `Medellín` y `Bogotá` ~20 puntos cada una, `lat/lon` reales, `speed` variado `0/45/85` para `speeding_on/off` y `zone_enter/exit`; tracking GPS real continuo `watchPositionAsync` `Accuracy.High` `timeInterval 1000`/`distanceInterval 0` con `speed` Doppler real (no Δpos/Δt), enqueue del último fix cada `5s`, flush batch cada `5s` o `>=50` pendientes, `POST /batch 1..500` con `client_event_id` uuid; placa se mantiene al cambiar ruta | UC-004 | must |
 | FR-008 | Persistencia WatermelonDB `pending_telemetry {id, client_event_id uuid, plate, lat nullable, lon nullable, speed int>=0, occurred_at, sync_status pending|syncing|synced|failed, attempts, last_error}`; `client_event_id` sagrado para dedup `Nats-Msg-Id`; sobrevive a kill | UC-002 | must |
 | FR-009 | Sync batch idempotente: `POST /batch` con `events[1..500]` `1MB`, `202 {accepted:N}` -> marca `synced`/`delete`; `429/503` respeta `Retry-After` + backoff exponencial `5s*2^attempts` cap `60s` + jitter `0-1s`, no vacía; `attempts>=5` -> `failed` | UC-002 | must |
 | FR-010 | Config `EXPO_PUBLIC_API_URL` para LB `http://host:8080` (LAN IP en Expo Go) y `Network` via `NetInfo`, `Location` solo modo real | UC-001, UC-002 | must |
@@ -165,7 +165,7 @@ Imágenes de referencia (6 wireframes adjuntos) definen la fidelidad UX: `Plate`
 | BR-005 | `Disconnect` purga `pending_telemetry` y resetea input/estado a `idle`, aborta `fetch` y detiene intervalo | UC-003 FR-004 |
 | BR-006 | Toggle `Activar ruta simulada` deshabilitado hasta `connected`; `OFF` gris, `ON` verde habilita rutas | UC-004 FR-005 |
 | BR-007 | Seleccionar ruta limpia buffer previo y reinicia secuencia; `ON->OFF` limpia y pasa a GPS real | UC-004 FR-006 |
-| BR-008 | Rutas ~20 puntos, `speed int>=0`, `lat[-90,90] lon[-180,180] nullable`, generación `5s`, batch `1..500` con `client_event_id` uuid para dedup `Nats-Msg-Id` + `ON CONFLICT DO NOTHING` | UC-004 FR-007/008 |
+| BR-008 | Rutas ~20 puntos, `speed int>=0` Doppler real, `lat[-90,90] lon[-180,180] nullable` de `watchPositionAsync` 1Hz continuo, enqueue 5s del último fix, batch `1..500` con `client_event_id` uuid para dedup `Nats-Msg-Id` + `ON CONFLICT DO NOTHING` | UC-004 FR-007/008 |
 | BR-009 | Backoff `429/503` con `Retry-After` + exp `5s*2^n` cap 60s + jitter, `attempts>=5` -> `failed` | UC-002 FR-009 |
 | BR-010 | `EXPO_PUBLIC_API_URL` para LAN IP, `WatermelonDB` persiste tras kill, `sync_status` trazable | UC-002 FR-008/010 |
 | BR-011 | Fidelidad visual 6 wireframes: colores y habilitación exactos | UC-001/004 FR-012 |
@@ -183,7 +183,7 @@ flowchart TD
   D -->|"red OK"| F["POST /v1/telemetry {plate, lat, lon, speed, client_event_id}"]
   F -->|"202"| G["connected: Syncing CONNECTED + toggle OFF habilitado"]
   F -->|"429/503/400/timeout"| E
-  G --> H["toggle OFF -> GPS real cada 5s encola pending + batch 5s/50"]
+  G --> H["toggle OFF -> GPS continuo 1Hz watchPositionAsync, encola ultimo fix cada 5s + batch 5s/50"]
   E --> I["Disconnect -> purga BD + idle"]
 ```
 
@@ -197,7 +197,7 @@ flowchart TD
   D --> E["Med verde + Bog azul + batch 202 -> CONNECTED"]
   E --> F["click Ruta Bogota -> purga BD + secuencia Bog 0"]
   F --> G["Bog verde + Med azul"]
-  G --> H["ON -> OFF -> purga + GPS real"]
+  G --> H["ON -> OFF -> purga + GPS continuo 1Hz"]
 ```
 
 ### Flow C — Offline y reconexión
@@ -279,7 +279,7 @@ sequenceDiagram
   M->>M: mark synced, Syncing CONNECTED
   Note over M,LB: avion -> NetInfo ERROR, no fetch, encola 245
   M->>LB: reconecta -> POST /batch 245 -> 202
-  U->>M: Disconnect -> DELETE pending + idle + input ""
+  U->>M: Disconnect -> stop watchPositionAsync + DELETE pending + idle + input ""
 ```
 
 ## 12. Flow Diagrams
@@ -299,7 +299,7 @@ flowchart TD
 
 | ID | Categoría | Descripción |
 |----|-----------|-------------|
-| NFR-001 | performance | Encolado `5s`, flush `5s/50`, `POST /batch` p95 <500ms LAN, no bloquea UI, backoff no quema batería |
+| NFR-001 | performance | Watch `1Hz` continuo `watchPositionAsync` High, encolado `5s` del último fix, flush `5s/50`, `POST /batch` p95 <500ms LAN, no bloquea UI, backoff no quema batería |
 | NFR-002 | reliability | Offline-first: kill app con 100 pending -> restaura 100, dedup `client_event_id` evita duplicar tras 2m `Duplicates` |
 | NFR-003 | scalability | 1 placa `1 evt/5s` = 12/min < quota `12/min burst20`; batch `500/30s` respeta `SPEC-001` BR-005 |
 | NFR-004 | availability | `idle` sin placa = BD vacía; `Disconnect` purga determinista; `WatermelonDB` init <1s |
@@ -369,7 +369,7 @@ AC-011 (FR-010/011, NFR-008):
 AC-012 (FR-012, NFR-007):
   Given build mobile
   When render 6 wireframes
-  Then colores exactos: Connect verde #86efac, Disconnect rosa #f9a8d4, Syncing rojo #dc2626, OK verde #16a34a, ERROR rojo #dc2626, ruta gris #e5e7eb azul #93c5fd verde #86efac, fonts sketch y touch targets >=44pt
+  Then colores exactos: Connect verde #86efac, Disconnect rosa #f9a8d4, Syncing IDLE negro #111827 / CONNECTING rojo #dc2626 / CONNECTED verde #16a34a / ERROR rojo #dc2626, OK verde #16a34a, ERROR rojo #dc2626, ruta gris #e5e7eb azul #93c5fd verde #86efac, fonts sketch y touch targets >=44pt
 ```
 
 ## 15. Functional Test Scenarios
@@ -403,8 +403,8 @@ AC-012 (FR-012, NFR-007):
 
 - `POST /v1/telemetry` y `/batch` ya existen (SPEC-001) con `202` async NATS `Duplicates 2m` y `ON CONFLICT DO NOTHING`; móvil solo consume `202/429/503`.
 - WatermelonDB en Expo con `expo-sqlite` adapter; si JSI bloquea, fallback `expo-sqlite` mantiene mismo modelo.
-- Intervalo `5s` alineado con `SPEC-001` `1 evt/5s` y quota `12/min burst20`; batch `5s/50` respeta `500/30s`.
-- GPS real vía `expo-location` solo en `ON->OFF`; simulada no requiere permiso location.
+ - Watch continuo `1Hz` `watchPositionAsync` High, enqueue `5s` del último fix alineado con `SPEC-001` `1 evt/5s` y quota `12/min burst20`; batch `5s/50` respeta `500/30s`.
+- GPS real vía `watchPositionAsync` High `timeInterval 1000` solo en `ON->OFF` y modo real; simulada no requiere permiso location, permiso se pide una sola vez al iniciar watch.
 - `EXPO_PUBLIC_API_URL` resuelve `localhost` vs `LAN IP` para Expo Go; LB `8080` único entry point.
 - CI móvil path-filter: no dispara build full backend si solo cambia `mobile/`.
 

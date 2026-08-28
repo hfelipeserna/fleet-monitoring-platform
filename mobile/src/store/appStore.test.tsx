@@ -38,12 +38,12 @@ describe('appStore', () => {
     const { getState } = useAppStore as any;
     // Zustand store reset via setState if available
     try {
-      useAppStore.setState({ conn: 'idle', sync: 'CONNECTING', net: 'OK', db: 'OK', plate: '' } as any);
+      useAppStore.setState({ conn: 'idle', sync: 'IDLE', net: 'OK', db: 'OK', plate: '' } as any);
     } catch {}
   });
 
   describe('initial state', () => {
-    it('starts idle with CONNECTING sync and OK db/net', () => {
+    it('starts idle with IDLE sync and OK db/net', () => {
       // Arrange
       const { result } = renderHook(() => useAppStore());
 
@@ -52,7 +52,7 @@ describe('appStore', () => {
 
       // Assert
       expect(state.conn).toBe('idle');
-      expect(state.sync).toBe('CONNECTING');
+      expect(state.sync).toBe('IDLE');
       expect(state.db).toBe('OK');
       expect(state.net).toBe('OK');
     });
@@ -117,7 +117,7 @@ describe('appStore', () => {
       await act(async () => {
         const s: any = useAppStore.getState();
         if (s.disconnect) await s.disconnect();
-        else useAppStore.setState({ conn: 'idle', sync: 'CONNECTING', plate: '' } as any);
+        else useAppStore.setState({ conn: 'idle', sync: 'IDLE', plate: '' } as any);
       });
 
       // Assert
@@ -235,7 +235,7 @@ describe('appStore', () => {
       expect(await mockCountPendingAC004()).toBe(0);
       expect(useAppStore.getState().conn).toBe('idle');
       expect(useAppStore.getState().plate).toBe('');
-      expect(useAppStore.getState().sync).toBe('CONNECTING');
+      expect(useAppStore.getState().sync).toBe('IDLE');
       expect(useAppStore.getState().simOn).toBe(false);
       expect(useAppStore.getState().simEnabled).toBe(false);
       expect(useAppStore.getState().selectedRoute).toBeNull();

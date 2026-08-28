@@ -1,5 +1,6 @@
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+import Constants from 'expo-constants';
 import { database } from './index';
 
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
@@ -36,11 +37,30 @@ function getMockQueue(): TelemetryRecord[] {
   return (g as Record<string, unknown>).__fleetMockQueue as TelemetryRecord[];
 }
 
+function isExpoGo(): boolean {
+  try {
+    const c = Constants as unknown as Record<string, unknown>;
+    const ownership = (c.appOwnership as string | undefined) ?? (c.executionEnvironment as string | undefined);
+    if (ownership === 'expo' || ownership === 'storeClient') return true;
+    const execEnv = (c as Record<string, unknown>).executionEnvironment as string | undefined;
+    if (execEnv === 'storeClient') return true;
+    const expoConfig = (c.expoConfig as Record<string, unknown> | undefined) ?? (c as Record<string, unknown>).manifest as Record<string, unknown> | undefined;
+    if (expoConfig && (expoConfig.executionEnvironment as string | undefined) === 'storeClient') return true;
+    const def = (c.default as Record<string, unknown> | undefined)?.expoConfig as Record<string, unknown> | undefined;
+    if (def && (def.executionEnvironment as string | undefined) === 'storeClient') return true;
+    if ((c as Record<string, unknown>).appOwnership === 'expo') return true;
+  } catch {}
+  return false;
+}
+
 function isMock(): boolean {
   try {
+    if (isExpoGo()) return true;
     const db = database as unknown as Record<string, unknown> | null;
     if (!db) return true;
     if ((db as Record<string, unknown>)._mock) return true;
+    const col = (db as Record<string, unknown>).collections as unknown;
+    if (!col) return true;
     const isJest =
       typeof process !== 'undefined' &&
       !!((process as unknown as Record<string, unknown>).env as Record<string, unknown> | undefined)?.JEST_WORKER_ID;
@@ -230,7 +250,16 @@ export async function clearPending(): Promise<void> {
     getMockQueue().length = 0;
     return;
   }
-  await purgePending();
+  try {
+    await purgePending();
+  } catch {
+    try {
+      getMockQueue().length = 0;
+    } catch {}
+  }
+  try {
+    getMockQueue().length = 0;
+  } catch {}
 }
 
 export async function markSynced(ids: string[]): Promise<void> {

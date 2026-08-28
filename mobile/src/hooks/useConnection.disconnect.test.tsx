@@ -39,7 +39,7 @@ function resetStore() {
   try {
     useAppStore.setState({
       conn: 'idle',
-      sync: 'CONNECTING',
+      sync: 'IDLE',
       net: 'OK',
       db: 'OK',
       plate: '',
@@ -127,7 +127,7 @@ describe('useConnection disconnect purga AC-004', () => {
       expect(await mockCountPending()).toBe(0);
       expect(useAppStore.getState().conn).toBe('idle');
       expect(useAppStore.getState().plate).toBe('');
-      expect(useAppStore.getState().sync).toBe('CONNECTING');
+      expect(useAppStore.getState().sync).toBe('IDLE');
       expect(useAppStore.getState().simOn).toBe(false);
       expect(useAppStore.getState().simEnabled).toBe(false);
       expect(useAppStore.getState().selectedRoute).toBeNull();

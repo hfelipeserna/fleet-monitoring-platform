@@ -191,19 +191,32 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
       expect(getBgColor(disc)).toBe('#f9a8d4');
     });
 
-    it('Syncing rojo #dc2626 siempre (CONNECTING/CONNECTED/ERROR)', () => {
+    it('Syncing verde #16a34a cuando CONNECTED, rojo #dc2626 cuando CONNECTING/ERROR', () => {
       // Arrange
       useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>);
 
       // Act
-      const { getByTestId } = render(<App />);
-      const syncEl = getByTestId('sync-status');
+      const { getByTestId, rerender } = render(<App />);
+      const syncOk = getByTestId('sync-status');
 
-      // Assert
-      const c = getColor(syncEl);
-      const dump = JSON.stringify(syncEl.props.style);
-      expect(c === '#dc2626' || dump.includes('#dc2626')).toBe(true);
-      expect(getColor(syncEl)).toBe('#dc2626');
+      // Assert CONNECTED verde
+      expect(getColor(syncOk)).toBe('#16a34a');
+
+      // Arrange CONNECTING rojo
+      act(() => {
+        useAppStore.setState({ conn: 'connecting', sync: 'CONNECTING', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>);
+      });
+      rerender(<App />);
+      const syncConnecting = getByTestId('sync-status');
+      expect(getColor(syncConnecting)).toBe('#dc2626');
+
+      // Arrange ERROR rojo
+      act(() => {
+        useAppStore.setState({ conn: 'error', sync: 'ERROR', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>);
+      });
+      rerender(<App />);
+      const syncErr = getByTestId('sync-status');
+      expect(getColor(syncErr)).toBe('#dc2626');
     });
 
     it('OK verde #16a34a y ERROR rojo #dc2626 en dots', () => {
@@ -349,7 +362,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
   });
 
   describe('snapshot 6 wireframes exactos', () => {
-    it('snapshot estable incluye colores wireframes #86efac #f9a8d4 #dc2626 #93c5fd #16a34a (y #e5e7eb en OFF)', () => {
+    it('snapshot estable incluye colores wireframes #86efac #f9a8d4 #93c5fd #16a34a (y #e5e7eb en OFF) - CONNECTED verde', () => {
       // Arrange
       useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: true, selectedRoute: 'medellin' } as unknown as Record<string, unknown>);
 
@@ -357,12 +370,12 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
       const renderedOn = render(<App />);
       const dumpOn = JSON.stringify(renderedOn.toJSON());
 
-      // Assert ON state: verde, rosa, rojo, azul, ok verde (sin gris porque ON)
+      // Assert ON state: verde conectado, rosa disconnect, azul rutas, ok verde - CONNECTED ya es verde #16a34a, no rojo
       expect(dumpOn).toContain('#86efac');
       expect(dumpOn).toContain('#f9a8d4');
-      expect(dumpOn).toContain('#dc2626');
       expect(dumpOn).toContain('#93c5fd');
       expect(dumpOn).toContain('#16a34a');
+      expect(dumpOn).toContain('Syncing data CONNECTED');
       // gris solo en OFF, verificar segundo render
       // Arrange OFF
       useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: false, selectedRoute: null } as unknown as Record<string, unknown>);

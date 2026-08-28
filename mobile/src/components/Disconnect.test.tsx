@@ -41,7 +41,7 @@ function resetStore() {
   try {
     useAppStore.setState({
       conn: 'idle',
-      sync: 'CONNECTING',
+      sync: 'IDLE',
       net: 'OK',
       db: 'OK',
       plate: '',
@@ -182,8 +182,8 @@ describe('Disconnect button AC-004 FR-004 BR-005 FR-012', () => {
       // 3) store reset to idle
       expect(useAppStore.getState().conn).toBe('idle');
       expect(useAppStore.getState().plate).toBe('');
-      // 4) sync reset to CONNECTING, simOff
-      expect(useAppStore.getState().sync).toBe('CONNECTING');
+      // 4) sync reset to IDLE, simOff
+      expect(useAppStore.getState().sync).toBe('IDLE');
       expect(useAppStore.getState().simOn).toBe(false);
       expect(useAppStore.getState().simEnabled).toBe(false);
       expect(useAppStore.getState().selectedRoute).toBeNull();

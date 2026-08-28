@@ -46,6 +46,9 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
   const simOn = useAppStore((s) => s.simOn);
   const selectedRoute = useAppStore((s) => s.selectedRoute);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const latestPosRef = useRef<{ lat: number; lon: number; speed: number } | null>(null);
+  const watchSubRef = useRef<{ remove: () => void } | null>(null);
+  const permissionGrantedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (conn !== 'connected') {
@@ -55,6 +58,14 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
         else intervalClear(idNum);
         intervalRef.current = null;
       }
+      if (watchSubRef.current) {
+        try {
+          watchSubRef.current.remove();
+        } catch {}
+        watchSubRef.current = null;
+      }
+      latestPosRef.current = null;
+      permissionGrantedRef.current = null;
       return;
     }
 
@@ -62,6 +73,40 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
       const idNum = intervalRef.current as unknown as number;
       if (intervalPort) intervalPort.clear(idNum);
       else intervalClear(idNum);
+    }
+
+    if (simOn) {
+      if (watchSubRef.current) {
+        try {
+          watchSubRef.current.remove();
+        } catch {}
+        watchSubRef.current = null;
+      }
+      latestPosRef.current = null;
+      permissionGrantedRef.current = null;
+    } else {
+      if (!watchSubRef.current) {
+        (async () => {
+          try {
+            const perm = await Location.requestForegroundPermissionsAsync();
+            permissionGrantedRef.current = perm.status === 'granted';
+            if (!permissionGrantedRef.current) return;
+            const sub = await (Location as unknown as { watchPositionAsync?: (opts: unknown, cb: (pos: { coords: { latitude: number; longitude: number; speed: number | null } }) => void) => Promise<{ remove: () => void }> }).watchPositionAsync?.(
+              {
+                accuracy: (Location as unknown as { Accuracy?: { High: number } }).Accuracy?.High ?? 6,
+                timeInterval: 1000,
+                distanceInterval: 0,
+              },
+              (pos) => {
+                latestPosRef.current = { lat: pos.coords.latitude, lon: pos.coords.longitude, speed: pos.coords.speed ?? 0 };
+              },
+            );
+            if (sub && typeof sub.remove === 'function') {
+              watchSubRef.current = sub;
+            }
+          } catch {}
+        })();
+      }
     }
 
     const id = setInterval(async () => {
@@ -79,13 +124,26 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
           const nextIdx = route.length > 0 ? (curIdx + 1) % route.length : 0;
           useAppStore.setState({ selectedRouteIdx: nextIdx } as unknown as Record<string, unknown>);
         } else {
-          try {
-            const perm = await Location.requestForegroundPermissionsAsync();
-            if (perm.status !== 'granted') return;
-            const pos = await Location.getCurrentPositionAsync({});
-            pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, speed: pos.coords.speed ?? 0 };
-          } catch {
-            return;
+          const cached = latestPosRef.current;
+          if (cached) {
+            pt = cached;
+          } else {
+            if (permissionGrantedRef.current === false) return;
+            if (permissionGrantedRef.current === null) {
+              try {
+                const perm = await Location.requestForegroundPermissionsAsync();
+                permissionGrantedRef.current = perm.status === 'granted';
+                if (!permissionGrantedRef.current) return;
+              } catch {
+                return;
+              }
+            }
+            try {
+              const pos = await Location.getCurrentPositionAsync({});
+              pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, speed: pos.coords.speed ?? 0 };
+            } catch {
+              return;
+            }
           }
         }
         await enqueuePoint(
@@ -93,7 +151,7 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
             plate,
             lat: pt.lat,
             lon: pt.lon,
-            speed: pt.speed,
+            speed: Math.round(pt.speed ?? 0),
             client_event_id: uuidv4(),
             occurred_at: new Date().toISOString(),
             sync_status: 'pending',
@@ -114,6 +172,13 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
       if (intervalRef.current === id) {
         intervalRef.current = null;
       }
+      if (watchSubRef.current) {
+        try {
+          watchSubRef.current.remove();
+        } catch {}
+        watchSubRef.current = null;
+      }
+      permissionGrantedRef.current = null;
     };
   }, [conn, simOn, selectedRoute, telemetryPort, intervalPort]);
 }

@@ -40,8 +40,8 @@ describe('StatusPanel', () => {
     jest.clearAllMocks();
   });
 
-  describe('connected -> Network OK verde + Syncing CONNECTED rojo', () => {
-    it('renders Network connectivity ○ OK verde #16a34a and Syncing CONNECTED rojo #dc2626 and WatermelonDB OK verde (desacoplados OK)', async () => {
+  describe('connected -> Network OK verde + Syncing CONNECTED verde', () => {
+    it('renders Network connectivity ○ OK verde #16a34a and Syncing CONNECTED verde #16a34a and WatermelonDB OK verde (desacoplados OK)', async () => {
       // Arrange
       useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as any);
       const { getByTestId } = render(<StatusPanel />);
@@ -55,7 +55,7 @@ describe('StatusPanel', () => {
       expect(syncEl).toBeTruthy();
       expect(netEl).toBeTruthy();
       expect(dbEl).toBeTruthy();
-      expect(syncEl.props.children).toEqual(expect.stringContaining('Syncing data ... CONNECTED'));
+      expect(syncEl.props.children).toEqual(expect.stringContaining('Syncing data CONNECTED'));
       expect(netEl.props.children).toEqual(expect.stringContaining('Network connectivity'));
       expect(netEl.props.children).toEqual(expect.stringContaining('OK'));
       expect(dbEl.props.children).toEqual(expect.stringContaining('WatermelonDB status'));
@@ -63,11 +63,9 @@ describe('StatusPanel', () => {
       // dots must be ○ (open circle) per spec, not ●
       expect(String(netEl.props.children)).toContain('○');
       expect(String(dbEl.props.children)).toContain('○');
-      expect(getColor(syncEl)).toBe('#dc2626');
+      expect(getColor(syncEl)).toBe('#16a34a');
       expect(getColor(netEl)).toBe('#16a34a');
       expect(getColor(dbEl)).toBe('#16a34a');
-      // sync always rojo even when CONNECTED per FR-012
-      expect(getColor(syncEl)).not.toBe('#16a34a');
     });
 
     it('verifies testID sync-status/db-status/net-status exist', () => {

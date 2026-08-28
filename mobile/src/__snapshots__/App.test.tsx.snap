@@ -100,7 +100,7 @@ exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 6 wireframe
       }
       testID="sync-status"
     >
-      Syncing data ... CONNECTING
+      Syncing data CONNECTING
     </Text>
     <Text
       style={
@@ -329,7 +329,7 @@ exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 6 wireframe
 </View>
 `;
 
-exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 snapshot 6 wireframes exactos snapshot estable incluye colores wireframes #86efac #f9a8d4 #dc2626 #93c5fd #16a34a (y #e5e7eb en OFF) 1`] = `
+exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 snapshot 6 wireframes exactos snapshot estable incluye colores wireframes #86efac #f9a8d4 #93c5fd #16a34a (y #e5e7eb en OFF) - CONNECTED verde 1`] = `
 <View
   style={
     {
@@ -428,13 +428,13 @@ exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 snapshot 6 
     <Text
       style={
         {
-          "color": "#dc2626",
+          "color": "#16a34a",
           "fontFamily": "Sketch",
         }
       }
       testID="sync-status"
     >
-      Syncing data ... CONNECTED
+      Syncing data CONNECTED
     </Text>
     <Text
       style={

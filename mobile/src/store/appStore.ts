@@ -9,7 +9,7 @@ import {
 } from './ports';
 
 export type ConnState = 'idle' | 'connecting' | 'connected' | 'error';
-export type SyncState = 'CONNECTING' | 'CONNECTED' | 'ERROR';
+export type SyncState = 'IDLE' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 export type NetState = 'OK' | 'ERROR';
 export type DbState = 'OK' | 'ERROR';
 
@@ -42,6 +42,7 @@ interface AppState {
 }
 
 function syncForConn(conn: ConnState): SyncState {
+  if (conn === 'idle') return 'IDLE';
   if (conn === 'connected') return 'CONNECTED';
   if (conn === 'error') return 'ERROR';
   return 'CONNECTING';
@@ -77,7 +78,7 @@ function intervalClearAll(): void {
 export const useAppStore = create<AppState>((set, get) => ({
   plate: '',
   conn: 'idle',
-  sync: 'CONNECTING',
+  sync: 'IDLE',
   net: 'OK',
   db: 'OK',
   simOn: false,
@@ -150,23 +151,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         plate: '',
         conn: 'idle',
-        sync: 'CONNECTING',
+        sync: 'IDLE',
         simOn: false,
         simEnabled: false,
         selectedRoute: null,
         selectedRouteIdx: 0,
       });
     } catch (err) {
+      console.warn('[store] disconnect purge failed', err);
+      try {
+        const g = globalThis as unknown as Record<string, unknown>;
+        const q = g.__fleetMockQueue as unknown[] | undefined;
+        if (Array.isArray(q)) q.length = 0;
+      } catch {}
       set({
         db: 'ERROR',
-        plate: prevPlate,
-        conn: prevConn,
-        sync: prevSync,
-        simOn: prevSimOn,
-        simEnabled: prevSimEnabled,
-        selectedRoute: prevRoute,
+        plate: '',
+        conn: 'idle',
+        sync: 'IDLE',
+        simOn: false,
+        simEnabled: false,
+        selectedRoute: null,
+        selectedRouteIdx: 0,
       });
-      throw err;
     } finally {
       set({ isDisconnecting: false });
     }
@@ -176,7 +183,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       plate: '',
       conn: 'idle',
-      sync: 'CONNECTING',
+      sync: 'IDLE',
       net: 'OK',
       db: 'OK',
       simOn: false,

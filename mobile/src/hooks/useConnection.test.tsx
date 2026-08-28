@@ -97,7 +97,7 @@ describe('useConnection', () => {
       // Assert intermediate connecting (allow connected if fetch resolved fast after centralizing timeout)
       expect(['connecting', 'connected']).toContain(useAppStore.getState().conn);
       if (useAppStore.getState().conn === 'connecting') {
-        expect(getByText(/Syncing data \.\.\. CONNECTING/i)).toBeTruthy();
+        expect(getByText(/Syncing data CONNECTING/i)).toBeTruthy();
       }
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
       expect(getByText(/Network connectivity.*OK/i)).toBeTruthy();
@@ -111,8 +111,8 @@ describe('useConnection', () => {
 
       // Assert final connected
       await waitFor(() => expect(useAppStore.getState().conn).toBe('connected'));
-      expect(getByText(/Syncing data \.\.\. CONNECTED/i)).toBeTruthy();
-      expect(queryByText(/Syncing data \.\.\. ERROR/i)).toBeNull();
+      expect(getByText(/Syncing data CONNECTED/i)).toBeTruthy();
+      expect(queryByText(/Syncing data ERROR/i)).toBeNull();
       // toggle habilitado logic: sim toggle should be enabled only when connected (checked via store)
       const state: any = useAppStore.getState();
       // connected habilita toggle OFF -> spec: conn===connected => sim enabled
@@ -146,7 +146,7 @@ describe('useConnection', () => {
         jest.advanceTimersByTime(0);
         await Promise.resolve();
       });
-      expect(getByText(/Syncing data \.\.\. CONNECTING/i)).toBeTruthy();
+      expect(getByText(/Syncing data CONNECTING/i)).toBeTruthy();
 
       await act(async () => {
         jest.advanceTimersByTime(5000);
@@ -155,10 +155,10 @@ describe('useConnection', () => {
 
       // Assert
       await waitFor(() => expect(useAppStore.getState().conn).toBe('error'));
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
-      const styleDump = JSON.stringify(getByText(/Syncing data \.\.\. ERROR/i).props.style ?? '');
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
+      const styleDump = JSON.stringify(getByText(/Syncing data ERROR/i).props.style ?? '');
       // Syncing rojo #dc2626 per FR-012
-      expect(styleDump.includes('#dc2626') || getByText(/Syncing data \.\.\. ERROR/i).parent?.props?.style).toBeDefined();
+      expect(styleDump.includes('#dc2626') || getByText(/Syncing data ERROR/i).parent?.props?.style).toBeDefined();
     });
 
     it('sends POST /v1/telemetry with client_event_id uuid and occurred_at', async () => {
@@ -219,7 +219,7 @@ describe('useConnection', () => {
 
       // Assert
       await waitFor(() => expect(useAppStore.getState().conn).toBe('error'));
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
       expect(useAppStore.getState().sync).toBe('ERROR');
     });
@@ -247,7 +247,7 @@ describe('useConnection', () => {
 
       // Assert
       await waitFor(() => expect(useAppStore.getState().conn).toBe('error'));
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
       expect(useAppStore.getState().sync).toBe('ERROR');
       // Verify Retry-After was read (indirect via fetch mock)
       expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/v1/telemetry'), expect.anything());
@@ -278,7 +278,7 @@ describe('useConnection', () => {
 
       // Assert
       await waitFor(() => expect(useAppStore.getState().conn).toBe('error'));
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
       expect(getByText(/Network connectivity.*OK/i)).toBeTruthy();
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
     });
@@ -295,7 +295,7 @@ describe('useConnection', () => {
       // Assert
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
       expect(getByText(/Network connectivity.*OK/i)).toBeTruthy();
-      expect(getByText(/Syncing data \.\.\. CONNECTED/i)).toBeTruthy();
+      expect(getByText(/Syncing data CONNECTED/i)).toBeTruthy();
       const panelText = getByText(/WatermelonDB status.*OK/i);
       const style = panelText.props.style as unknown as Record<string, unknown> | Record<string, unknown>[];
       const flat = Array.isArray(style) ? Object.assign({}, ...style) : (style as Record<string, unknown>);
@@ -310,7 +310,7 @@ describe('useConnection', () => {
       // Act
 
       // Assert
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
       expect(getByText(/WatermelonDB status/i)).toBeTruthy();
     });
 
@@ -323,7 +323,7 @@ describe('useConnection', () => {
 
       // Assert
       expect(getByText(/Network connectivity.*ERROR/i)).toBeTruthy();
-      expect(getByText(/Syncing data \.\.\. ERROR/i)).toBeTruthy();
+      expect(getByText(/Syncing data ERROR/i)).toBeTruthy();
       expect(getByText(/WatermelonDB status.*OK/i)).toBeTruthy();
     });
   });
