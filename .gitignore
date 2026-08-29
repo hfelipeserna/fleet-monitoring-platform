@@ -20,8 +20,12 @@ mobile/eas.json.local
 # Terraform
 *.tfstate
 *.tfstate.*
+*.tfstate*
 .terraform/
+.terraform/**
 *.tfvars
+!*.tfvars.example
+!.terraform.lock.hcl
 
 # Entornos y secretos
 .env*
