@@ -34,7 +34,7 @@ Plataforma *event-driven* para flotas: **ingesta telemetría** (Go + NATS JetStr
 | **Postman** | Desktop o `newman` | `pnpm dlx newman run ...` o `npm i -g newman` |
 | **colima** (macOS) | — | `colima start --cpu 4 --memory 8 --arch x86_64` si usas colima (máquina 16 GB) |
 
-> **RAM:** core `6-9 GB` idle, con `--profile observability` `+2 GB`. Deja 4-6 GB libres.
+> **RAM:** core `6-9 GB` idle, con `--profile observability` `+2 GB`. Deja 4-6 GB libres. `k6` consume `1-2GB` en `300VU 5m` (picos `1000VU`); **no levantes `observability` + `k6 300VU` + `4 bins -race` simultáneo en 16GB**.
 
 ---
 
@@ -104,6 +104,32 @@ docker compose logs -f api web lb ingest consumer agent  # ver logs
 docker compose down                 # apaga sin borrar datos
 docker compose down -v              # resetea pgdata/nats_data (hypertable + streams) — pierdes telemetría y zonas
 docker compose config -q && echo "compose ok"  # valida sin levantar
+```
+
+### 2.5 Despliegue cloud (Terraform)
+
+> **Sin secretos en git:** `*.tfvars` ignorado (`.gitignore`), usa `TF_VAR_db_password` o `terraform.tfvars` local no versionado. Ver `infra/terraform/README.md` y `infra/terraform/terraform.tfvars.example`.
+
+```bash
+# Validar sintaxis y configuración (sin creds AWS)
+terraform fmt -check -recursive infra/terraform
+cd infra/terraform && terraform init -backend=false && terraform validate
+cd infra/terraform/envs/dev && terraform init -backend=false && terraform validate
+cd infra/terraform/envs/prod && terraform init -backend=false && terraform validate
+
+# Plan contra AWS (requiere creds via env/GH Secrets, solo lectura)
+TF_VAR_db_password='...' terraform -chdir=infra/terraform plan
+TF_VAR_db_password='...' terraform -chdir=infra/terraform/envs/prod plan
+
+# Alternativa con tfvars local no versionado:
+cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars # edita sin password
+TF_VAR_db_password='...' terraform -chdir=infra/terraform/envs/prod plan
+
+# k6 carga/caos (requiere `docker compose up --wait` antes)
+k6 run infra/k6/load.js
+k6 run infra/k6/chaos.js    # 10% dup Nats-Msg-Id + 5% 400 sin stream
+
+# Notas 16GB (ver ADR-0001/0002): k6 1-2GB 1000VU, no levantar observability + k6 300VU + 4 bins -race simultáneo.
 ```
 
 ---
