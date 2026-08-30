@@ -4,13 +4,13 @@ Plataforma *event-driven* para flotas: **ingesta telemetría** (Go + NATS JetStr
 
 > **Stack decidido — ver `AGENTS.md` y `docs/adr/`:** NATS JetStream (no Kafka), TimescaleDB hypertable + PostGIS, Genkit-Go (`googlegenai` + `compat_oai/openai`), `jackc/pgx`, `sony/gobreaker`. Ver **ADR-0008** para LLM pluggable.
 
-> **Para el revisor:** esta guía está pensada para levantar **TODO en <10 min** en un Mac/Linux con 16GB. Sigue el **Quickstart (2 min)** y luego el **Paso a paso** con salida esperada de cada comando.
+> Esta guía está pensada para levantar **TODO en <10 min** en un Mac/Linux con 16GB. Sigue el **Quickstart (2 min)** y luego el **Paso a paso** con salida esperada de cada comando.
 
 ---
 
 ## Índice
 1. [Requisitos](#1-requisitos)
-2. [Quickstart para el revisor (60s)](#2-quickstart-para-el-revisor-60s)
+2. [Quickstart](#2-quickstart)
 3. [Guía paso a paso](#3-guía-paso-a-paso)
    - 3.1 [Configurar secretos](#31-configurar-secretos-1-vez)
    - 3.2 [Levantar core](#32-levantar-core-30-40s)
@@ -51,12 +51,12 @@ Plataforma *event-driven* para flotas: **ingesta telemetría** (Go + NATS JetStr
 
 ---
 
-## 2. Quickstart para el revisor (60s)
+## 2. Quickstart
 
-> Copia-pega este bloque. Si todo está instalado, en 60s tienes el stack verde.
+> Copia-pega este bloque. Si todo está instalado, en 60s tienes todo up.
 
 ```bash
-# 0) (macOS) VM Docker 8GB — solo si usas colima
+# Preparación entorno docker: (macOS) VM Docker 8GB — solo si usas colima
 colima start --cpu 4 --memory 8 --arch x86_64 2>/dev/null || true
 
 # 1) Secretos (1 vez) — defaults ya sirven para demo sin LLM
@@ -580,7 +580,7 @@ Ver `docs/adr/`.
 
 ---
 
-## 11. Auditoría de IA — Exoesqueleto, no muleta
+## 11. Auditoría de IA
 
 > Al menos 2 decisiones donde la IA sugirió enfoque deficiente y se forzó el estándar. Bitácora en [`docs/IAUDIT.md`](docs/IAUDIT.md).
 
