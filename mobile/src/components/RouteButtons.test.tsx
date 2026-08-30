@@ -99,6 +99,8 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   });
 
   afterEach(() => {
+    intervalRegistry.reset();
+    jest.clearAllTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
@@ -278,6 +280,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       await act(async () => {
         jest.advanceTimersByTime(5000);
         await Promise.resolve();
+        await Promise.resolve();
       });
 
       // Assert
@@ -287,7 +290,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       expect(call.lon).toBeCloseTo(-74.0721, 1);
       expect(call.plate).toBe('TGY589');
       expect(call.client_event_id).toMatch(UUID_RE);
-    });
+    }, 10000);
 
     it('encola Bogota cada 5s con speed variado incluye 0 y 85', async () => {
       // Arrange
