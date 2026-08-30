@@ -144,8 +144,8 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --prefix mobile
-          npx --prefix mobile tsc --noEmit
-          npx --prefix mobile expo lint
+          npm --prefix mobile run typecheck
+          npm --prefix mobile run lint
 
   load-tests:
     name: k6 scripts (syntax check)
