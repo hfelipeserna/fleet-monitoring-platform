@@ -89,9 +89,9 @@ async function tick(ms: number) {
 
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
+    jest.restoreAllMocks();
     jest.useFakeTimers({ legacyFakeTimers: false });
     jest.clearAllTimers();
-    jest.restoreAllMocks();
     __resetPorts();
     intervalRegistry.reset();
     act(() => useAppStore.getState().reset());
