@@ -423,6 +423,22 @@ Por qué falla: Expo Go 54 exige tríada `expo 54 / RN 0.81.5 / react 19.1.0` (b
 Refactor exigido: Upgrade `react 19.1.0 + react-native 0.81.5 + jest-expo 54.0.12 + expo-* 18/19/16 + babel-preset-expo 54`, `@testing-library/react-native 13.3.3` + `@types/react 19.1.10` para `act` React 19, `expo-sqlite 16.0.10` alineado, mantener `WatermelonDB@0.27.1` con fallback LokiJS solo para Jest (`isJest` guard) + `expo.doctor.exclude` en próximo chore, `babel env.test` para plugin, `expo-standard-web-crypto` como deuda futura. `npm test 187/187 PASS`, `expo install --check Dependencies are up to date`, `expo-doctor 17/18`. Commit SDK54.
 Auditor: mobile-auditor | quality-auditor | architect
 
+## 2026-08-29 — Auditoría: k6 thresholds rate<0.02 ignora que 400 cuenta como failed [SPEC-006]
+Severidad: media
+Hallazgo: IA `devops` generó `infra/k6/load.js` con `thresholds: {http_req_failed:['rate<0.02'], checks:['rate>0.99']}` siguiendo literal `BR-003` `rate<0.02 (solo 5% inyectado)`. Propuso `copy` desde `skill chaos-load-testing` sin ajustar a semántica `k6`.
+Evidencia: infra/k6/load.js:8-11 `http_req_failed rate<0.02` (pre a761ac3, ver `k6 run --vus 10 --duration 10s` repro: `failed 4.28% >0.02` con 21/490 `400` válidos) + infra/k6/chaos.js:19 idem + `k6` docs `http_req_failed` = `status outside 2xx-3xx`
+Por qué falla: `k6` marca `http_req_failed=true` para todo no-2xx, por lo que `5%` de `400` inválidos (BR-002 requerido) ya hace `failed≈0.05` y `rate<0.02` siempre falla incluso con ingesta sana; el smoke real `490 reqs 21×400` dio `4.28%` y rompió thresholds aunque `p95 8.61ms` y `checks 99.79%` estaban verdes. Viola `quality-auditor` thresholds medibles y NFR-001 p95, y obliga a `Retry-After` mal calibrado.
+Refactor exigido: Cambiado a `http_req_failed:['rate<0.07']` (`5%` base `400` + `2%` tol para 503 backpressure real) en `load.js:10` y `chaos.js:20`, `spec.md FR-004/BR-003/AC-001` y `plan.md` alineados a `0.07`, re-run `k6 run --vus 10 --duration 10s` → `p95 7.2ms failed 4.08% checks 99.72%` 3/3 verde, `select count(*) 633 uniq 633 0 dups 0 GTP98` confirma dedup. Commit a761ac3 + fd2d59a.
+Auditor: architect | quality-auditor
+
+## 2026-08-29 — Auditoría: Terraform 0.0.0.0/0:5432 + tfvars con password versionado [SPEC-006]
+Severidad: alta
+Hallazgo: IA `devops` propuso `modules/data/main.tf` con `ingress { cidr_blocks = ["0.0.0.0/0"] from_port 5432 }` para RDS y `terraform.tfvars` con `db_password="change-me-local"` versionado, copiado de ejemplo `RDS open` de `skill iac-and-cicd` sin hardening.
+Evidencia: infra/terraform/modules/data/main.tf:15 `cidr_blocks 0.0.0.0/0` 5432 (pre refactor, ver git diff 45446d9^) + infra/terraform/terraform.tfvars (no `.example`) con `db_password` en claro (pre b5f9f49) y `docker-compose.yml` previo `POSTGRES_HOST_AUTH_METHOD=trust` (IAUDIT 2026-08-23)
+Por qué falla: Viola CIS AWS + OWASP A07 `Security Groups` (`0.0.0.0/0:5432` expone `TimescaleDB` hypertable `telemetry` con GPS PII a internet) y AGENTS.md `nada de secretos en git` + `12-factor` env; `gitleaks` detecta `db_password` en repo público y bots cosechan en minutos; `terraform.tfvars` versionado obliga fork por env y rompe `fmt/validate` gate si se rota. Similar a hallazgo `trust` auditado 2026-08-23.
+Refactor exigido: `modules/data/main.tf` cambiado a `security_groups = [var.ecs_sg_id]` (solo ECS SG puede `5432`), `.gitignore` `*.tfvars !*.tfvars.example !.terraform.lock.hcl`, solo `terraform.tfvars.example` versionado sin `db_password` (`# inject via TF_VAR_db_password`), `variables.tf` `db_password sensitive=true` sin default, `gitleaks` gate verde (`terraform fmt -check OK`, `init -backend=false && validate Success` root/dev/prod). Commit 45446d9 + b5f9f49.
+Auditor: security | reviewer | architect
+
 - Cada entrada cita evidencia en git (commit/SHA previo) para que el evaluador
   pueda ver el "antes y después".
 - **Dirección de la trazabilidad**: esta bitácora cita sus fuentes (ADRs,
