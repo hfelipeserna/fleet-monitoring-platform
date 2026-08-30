@@ -19,6 +19,8 @@ jest.mock('@nozbe/watermelondb', () => ({
   tableSchema: (x: any) => x,
 }), { virtual: true });
 
+jest.mock('../db', () => ({ initDatabase: jest.fn(async () => 'OK') }));
+
 const mockEnqueue = jest.fn(async (p: any) => ({ id: '1', client_event_id: p.client_event_id ?? '550e8400-e29b-41d4-a716-446655440000', ...p }));
 const mockClearPending = jest.fn(async () => {});
 const mockCountPending = jest.fn(async () => 0);
