@@ -93,10 +93,8 @@ function getBgColor(el: any): string | undefined {
 }
 
 async function flushMicrotasks() {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 jest.setTimeout(30000);
@@ -185,8 +183,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('encola pending cada 5s con client_event_id uuid, lat/lon Medellín reales y speed 0/45/85 tras Medellín', async () => {
       // Arrange — Covers [SPEC-005: AC-006] FR-006 FR-007 — determinístico sin fake timers
-      // No usa jest.advanceTimersByTime; captura callback de setInterval y la invoca manualmente.
-      // Evita Node 24 crypto.getRandomValues no-writable y drenado frágil de microtasks con fake timers modern.
+      jest.useRealTimers();
       const setIntervalSpy = jest.spyOn(global, 'setInterval' as any);
       act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
@@ -233,10 +230,13 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       expect(secondCall.client_event_id).not.toBe(firstCall.client_event_id);
       expect(secondCall.speed).toBeDefined();
       setIntervalSpy.mockRestore();
+      jest.useFakeTimers();
+      jest.clearAllTimers();
     });
 
     it('secuencia desde 0 tras seleccionar Medellín (primer punto Medellín, no continúa previo)', async () => {
       // Arrange — Covers [SPEC-005: AC-006] FR-006 — purga + reinicia idx 0 determinístico
+      jest.useRealTimers();
       const setIntervalSpy = jest.spyOn(global, 'setInterval' as any);
       act(() =>
         useAppStore.setState({
@@ -277,6 +277,8 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       expect(call.client_event_id).toMatch(UUID_RE);
       expect(useAppStore.getState().selectedRouteIdx).toBe(1);
       setIntervalSpy.mockRestore();
+      jest.useFakeTimers();
+      jest.clearAllTimers();
     });
 
     it('placa se mantiene al seleccionar Medellín', async () => {
