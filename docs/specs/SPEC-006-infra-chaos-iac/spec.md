@@ -65,7 +65,7 @@ Sin este slice el MVP funciona pero no es demostrable bajo carga ni desplegable 
   1. k6 levanta `300 VU` `constant-vus` `5m` (o `ramping-vus` documentado) cada VU simulando un vehículo (`plate` aleatoria válida `GTP###`, `lat/lon` en rango Medellín/Bogotá, `speed 0..90`, `client_event_id` uuid).
   2. Cada iteración decide probabilísticamente: `10%` reenvía el mismo `client_event_id` previo (mismo payload), `5%` envía payload inválido (`plate GTP98`, `speed -1`, `lat 100`, `JSON {}` sin `plate`, `lon` faltante).
   3. k6 hace `http.post(`${BASE_URL}/v1/telemetry`, JSON.stringify(payload), {headers:{'Content-Type':'application/json'}})` y valida con `check(res, { '202 valid': r=>r.status===202, '400 invalid': ... })`.
-  4. Thresholds: `http_req_duration p(95)<250ms`, `http_req_failed rate<0.02` (solo 5% inyectado falla, nada más), `checks rate>0.99`.
+  4. Thresholds: `http_req_duration p(95)<250ms`, `http_req_failed rate<0.07` (5% inyectado `400` contado como failed por k6 + 2% tolerancia), `checks rate>0.99`.
   5. Al final k6 reporta: `requests/sec, p95 por etapa, checks pass, dup aceptados vs únicos en DB, errores rechazados`. La aserción de dedup se demuestra vía `http.get(`${BASE_URL}/api/fleet/positions?limit=500`)` o conteo `SELECT` previo/post si hay acceso DB (documentado en comentario del script; no hardcodea secretos).
 - **Alternative Flows**:
   - 2a. Variante `batch` (`POST /v1/telemetry/batch` con 10 eventos) con mismo 10%/5% mixto.
@@ -115,7 +115,7 @@ Sin este slice el MVP funciona pero no es demostrable bajo carga ni desplegable 
 | FR-001 | Proveer script(s) k6 `infra/k6/load.js` (y/o `chaos.js`) que simulen `cientos de vehículos` (300 VU `constant-vus` `5m` mínimo, documentable `ramping-vus` alternativo) generando `plate ^[A-Z]{3}[0-9]{3}$`, `speed int 0..90`, `lat/lon` en rango válido, y publicando contra `BASE_URL` (default `http://localhost:8080`) `POST /v1/telemetry` (al menos) y opcionalmente `/batch` | UC-001 | must |
 | FR-002 | Inyectar exactamente `10%` de peticiones duplicadas por `client_event_id` repetido (mismo `uuid` + mismo payload, `Nats-Msg-Id` dedup ventana `2m`) y validar que se responden `202` sin crear fila duplicada en `telemetry` (`ON CONFLICT DO NOTHING`) | UC-001 | must |
 | FR-003 | Inyectar `5%` de errores/payloads inválidos (`plate` 5 chars, `speed` negativo/no int, `lat`/`lon` fuera de rango, JSON malformado/sin `plate`, campo faltante) y validar que el backend responde `400` (no `202`, no `500`, no contamina stream) y que el `consumer` no inserta fila | UC-001 | must |
-| FR-004 | Declarar y hacer cumplir thresholds k6: `http_req_duration p(95)<250ms`, `http_req_failed rate<0.02`, `checks rate>0.99`; emitir `summary` con `http_reqs, p95, checks, failed` por etapa | UC-001, UC-003 | must |
+| FR-004 | Declarar y hacer cumplir thresholds k6: `http_req_duration p(95)<250ms`, `http_req_failed rate<0.07` (5% `400` + 2% tol), `checks rate>0.99`; emitir `summary` con `http_reqs, p95, checks, failed` por etapa | UC-001, UC-003 | must |
 | FR-005 | Verificación de dedup: el script o su documentación debe describir el método para comprobar `duplicados aceptados pero DB única` (ej. snapshot `GET /api/fleet/positions` o conteo `telemetry` pre/post), sin hardcodear secretos y sin exponer `GEMINI_API_KEY` | UC-001, UC-003 | must |
 | FR-006 | Estructura `infra/terraform/` mínima: `main.tf, variables.tf, outputs.tf, versions.tf` + `modules/{network,data,services}` + `envs/{dev,prod}/main.tf` (o al menos `envs/prod`), `terraform fmt` limpio, `terraform validate` OK (incl. `init -backend=false`) | UC-002 | must |
 | FR-007 | Terraform sin secretos en git: `*.tfvars` con valores reales en `.gitignore`, `*.tfvars.example` versionado, proveedores `aws` y `random`, variables de secretos vía `TF_VAR_*` o `variables.tf` sin defaults sensibles; `gitleaks` no dispara | UC-002 | must |
@@ -129,7 +129,7 @@ Sin este slice el MVP funciona pero no es demostrable bajo carga ni desplegable 
 |----|-------------|-------------------|
 | BR-001 | `10% duplicados`: 1 de cada 10 mensajes reenvía el mismo `client_event_id` con el payload idéntico; JetStream lo acepta (`202`) pero `DuplicateWindow 2m` + `ON CONFLICT DO NOTHING` evita fila duplicada (SPEC-001 BR-004) | UC-001, FR-002 |
 | BR-002 | `5% errores`: 1 de cada 20 mensajes es inválido (`400` sin `PublishAsync`); inválidos nunca deben publicar a `NATS` ni insertarse; `consumer` no ve inválidos | UC-001, FR-003 |
-| BR-003 | Thresholds k6: `p(95)<250ms` presupuesto latencia ingest, `http_req_failed<0.02` (permite 5% inyectado pero nada más), `checks>0.99`; toda desviación es señal de backpressure o bug y hace fallar el test | UC-001/003, FR-004 |
+| BR-003 | Thresholds k6: `p(95)<250ms` presupuesto latencia ingest, `http_req_failed<0.07` (5% `400` contado como failed por k6 + 2% extra tol, ver infra/k6), `checks>0.99`; toda desviación es señal de backpressure o bug y hace fallar el test | UC-001/003, FR-004 |
 | BR-004 | Terraform `fmt` canónico: `terraform fmt -check -recursive` debe pasar; `versions.tf` fija `required_version ~> 1.15` y `aws ~> 5` | UC-002, FR-006 |
 | BR-005 | Sin secretos en `iac`: `*.tfvars` con valores reales jamás versionados; `.gitignore` cubre `.env` y `*.tfvars`; secretos inyectados por `TF_VAR_` o `GitHub Secrets` | UC-002, FR-007 |
 | BR-006 | `docker compose config` como gate local: toda PR que toque `infra/` o `docker-compose.yml` debe pasar `docker compose config -q` en `ci.yml` job `compose` | UC-002, FR-008 |
@@ -259,7 +259,7 @@ sequenceDiagram
 AC-SPEC-006-1 (UC-001, FR-001/004, BR-001/002/003, NFR-001):
   Given docker compose up --wait healthy (nats -js, timescaledb, ingest 8081, lb 8080) y TELEMETRY stream con DuplicateWindow 2m
   When k6 run infra/k6/load.js (BASE_URL=http://localhost:8080, vus 300 constant-vus 5m) genera plate válida GTP###, speed 0..90, lat/lon válidos, y POST /v1/telemetry
-  Then k6 emite summary con http_reqs>0, p(95)<250ms, http_req_failed rate<0.02, checks rate>0.99; When se usa ramping-vus documentado Then thresholds equivalentes se cumplen; métrica p95 medida por k6, no estimación manual.
+  Then k6 emite summary con http_reqs>0, p(95)<250ms, http_req_failed rate<0.07, checks rate>0.99; When se usa ramping-vus documentado Then thresholds equivalentes se cumplen; métrica p95 medida por k6, no estimación manual.
 
 AC-SPEC-006-2 (UC-001, FR-002, BR-001, NFR-002):
   Given k6 con pool de client_event_id previos
