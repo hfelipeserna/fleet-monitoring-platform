@@ -83,7 +83,9 @@ async function flushMicrotasks() {
 
 async function tick(ms: number) {
   await act(async () => {
-    await jest.advanceTimersByTimeAsync(ms);
+    jest.advanceTimersByTime(ms);
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
