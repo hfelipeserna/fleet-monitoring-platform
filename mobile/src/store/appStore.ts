@@ -69,10 +69,15 @@ async function resolveClearPending(): Promise<() => Promise<void>> {
 function intervalClearAll(): void {
   const port = getIntervalPort();
   if (port) {
-    port.clearAll();
+    try {
+      port.clearAll();
+    } catch {}
     return;
   }
-  clearInterval(0 as unknown as number);
+  try {
+    const { intervalRegistry } = require('./intervalRegistry');
+    intervalRegistry.clearAll();
+  } catch {}
 }
 
 export const useAppStore = create<AppState>((set, get) => ({

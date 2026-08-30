@@ -17,10 +17,15 @@ type ConnectParams = {
 function intervalClearAll(port?: IntervalPort): void {
   const injected = port ?? getIntervalPort();
   if (injected) {
-    injected.clearAll();
+    try {
+      injected.clearAll();
+    } catch {}
     return;
   }
-  clearInterval(0 as unknown as number);
+  try {
+    const { intervalRegistry } = require('../store/intervalRegistry');
+    intervalRegistry.clearAll();
+  } catch {}
 }
 
 export function useConnection(intervalPort?: IntervalPort) {

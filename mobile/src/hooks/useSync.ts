@@ -148,10 +148,14 @@ export function useSync(): void {
 
     checkAndFlush();
     const id = setInterval(() => {
-      const { net: curNet, conn: curConn } = useAppStore.getState();
-      if (curNet === 'OK' && curConn === 'connected') {
-        void triggerIfReady().then(() => checkAndFlush());
-      }
+      void (async () => {
+        try {
+          const { net: curNet, conn: curConn } = useAppStore.getState();
+          if (curNet !== 'OK' || curConn !== 'connected') return;
+          await triggerIfReady();
+          checkAndFlush();
+        } catch {}
+      })().catch(() => {});
     }, 5000);
     const port = getIntervalPort();
     if (port) port.register(id as unknown as number);

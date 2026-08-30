@@ -34,19 +34,32 @@ jest.mock('../db/telemetry', () => ({
 import { useAppStore } from '../store/appStore';
 import { useConnection } from './useConnection';
 import * as api from '../lib/api';
+import { intervalRegistry } from '../store/intervalRegistry';
+import { injectIntervalPort, __resetPorts } from '../store/ports';
 
 function resetStore() {
   try {
-    useAppStore.setState({
-      conn: 'idle',
-      sync: 'IDLE',
-      net: 'OK',
-      db: 'OK',
-      plate: '',
-      simOn: false,
-      simEnabled: false,
-      selectedRoute: null,
-    } as any);
+    useAppStore.getState().reset();
+  } catch {
+    try {
+      useAppStore.setState({
+        conn: 'idle',
+        sync: 'IDLE',
+        net: 'OK',
+        db: 'OK',
+        plate: '',
+        simOn: false,
+        simEnabled: false,
+        selectedRoute: null,
+        selectedRouteIdx: 0,
+      } as any);
+    } catch {}
+  }
+  try {
+    intervalRegistry.clearAll();
+  } catch {}
+  try {
+    __resetPorts();
   } catch {}
 }
 
@@ -57,6 +70,12 @@ describe('useConnection disconnect purga AC-004', () => {
   beforeEach(() => {
     // Arrange
     resetStore();
+    intervalRegistry.clearAll();
+    injectIntervalPort({
+      register: (id: number) => intervalRegistry.register(id),
+      clear: (id: number) => intervalRegistry.clear(id),
+      clearAll: () => intervalRegistry.clearAll(),
+    });
     jest.clearAllMocks();
     mockClearPending.mockClear();
     abortSpy.mockClear();
@@ -85,6 +104,9 @@ describe('useConnection disconnect purga AC-004', () => {
 
   afterEach(async () => {
     (global as any).AbortController = originalAbort;
+    jest.clearAllTimers();
+    intervalRegistry.clearAll();
+    try { __resetPorts(); } catch {}
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
@@ -106,10 +128,11 @@ describe('useConnection disconnect purga AC-004', () => {
         net: 'OK',
         db: 'OK',
       } as any);
-      // Simulate intervalo generación 5s started by useTelemetryGenerator
+      // Simulate intervalo generación 5s started by useTelemetryGenerator — register via intervalRegistry for DI clearAll
       const setIntervalSpy = jest.spyOn(global as any, 'setInterval');
       const clearIntervalSpy = jest.spyOn(global as any, 'clearInterval');
       const intervalId: any = setInterval(() => {}, 5000);
+      intervalRegistry.register(intervalId as unknown as number);
       const { result } = renderHook(() => useConnection());
 
       // Act

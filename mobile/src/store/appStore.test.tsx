@@ -31,6 +31,8 @@ jest.mock('../db/telemetry', () => ({
 
 // RED until store/appStore.ts exists
 import { useAppStore } from './appStore';
+import { intervalRegistry } from './intervalRegistry';
+import { injectIntervalPort, __resetPorts } from './ports';
 
 describe('appStore', () => {
   beforeEach(() => {
@@ -189,9 +191,19 @@ describe('appStore', () => {
       // Arrange - reset pending mock
       mockClearPendingAC004.mockClear();
       mockCountPendingAC004.mockClear();
+      intervalRegistry.clearAll();
+      try { __resetPorts(); } catch {}
+      injectIntervalPort({
+        register: (id: number) => intervalRegistry.register(id),
+        clear: (id: number) => intervalRegistry.clear(id),
+        clearAll: () => intervalRegistry.clearAll(),
+      });
       jest.useFakeTimers();
     });
     afterEach(() => {
+      jest.clearAllTimers();
+      intervalRegistry.clearAll();
+      try { __resetPorts(); } catch {}
       jest.useRealTimers();
     });
 
@@ -201,8 +213,9 @@ describe('appStore', () => {
       mockCountPendingAC004.mockImplementation(async () => pending);
       mockClearPendingAC004.mockImplementation(async () => { pending = 0; });
       const clearIntervalSpy = jest.spyOn(global as any, 'clearInterval');
-      // Simulate interval generation 5s encola cada 5s
+      // Simulate interval generation 5s encola cada 5s — register via intervalRegistry for DI clearAll
       const fakeId: any = setInterval(() => {}, 5000);
+      intervalRegistry.register(fakeId as unknown as number);
       act(() => {
         useAppStore.setState({
           conn: 'connected',
