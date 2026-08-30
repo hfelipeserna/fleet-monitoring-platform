@@ -82,17 +82,16 @@ async function flushMicrotasks() {
 }
 
 async function tick(ms: number) {
-  await act(async () => {
+  act(() => {
     jest.advanceTimersByTime(ms);
-    await Promise.resolve();
-    await Promise.resolve();
   });
+  await flushMicrotasks();
 }
 
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
-    jest.useFakeTimers({ legacyFakeTimers: false });
+    jest.useFakeTimers();
     jest.clearAllTimers();
     __resetPorts();
     intervalRegistry.reset();
