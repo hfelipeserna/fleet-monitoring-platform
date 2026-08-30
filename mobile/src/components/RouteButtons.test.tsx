@@ -134,18 +134,13 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     } as any);
   });
 
-  afterEach(async () => {
-    // Arrange - teardown determinístico: flush + cleanup antes de hook timeout
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+  afterEach(() => {
     cleanup();
     intervalRegistry.clearAll();
     intervalRegistry.reset();
     jest.clearAllTimers();
     jest.useRealTimers();
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('connected ON -> click Medellin -> purga + Medellin verde Bogota azul + encolado 5s', () => {
@@ -173,18 +168,17 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       // Arrange
       act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
-      const medBtn = getByTestId('route-medellin-btn');
-      const bogBtn = getByTestId('route-bogota-btn');
+      expect(getBgColor(getByTestId('route-medellin-btn'))).toBe('#93c5fd');
 
       // Act
       await act(async () => {
-        fireEvent.press(medBtn);
+        fireEvent.press(getByTestId('route-medellin-btn'));
         await Promise.resolve();
       });
 
       // Assert
-      expect(getBgColor(medBtn)).toBe('#86efac');
-      expect(getBgColor(bogBtn)).toBe('#93c5fd');
+      expect(getBgColor(getByTestId('route-medellin-btn'))).toBe('#86efac');
+      expect(getBgColor(getByTestId('route-bogota-btn'))).toBe('#93c5fd');
       expect(useAppStore.getState().plate).toBe('ACF356');
     }, 30000);
 
@@ -284,22 +278,20 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       // Arrange
       act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
-      const medBtn = getByTestId('route-medellin-btn');
-      const bogBtn = getByTestId('route-bogota-btn');
-      expect(getBgColor(medBtn)).toBe('#86efac');
+      expect(getBgColor(getByTestId('route-medellin-btn'))).toBe('#86efac');
       mockClearPending.mockClear();
 
       // Act
       await act(async () => {
-        fireEvent.press(bogBtn);
+        fireEvent.press(getByTestId('route-bogota-btn'));
         await Promise.resolve();
       });
 
       // Assert
       expect(mockClearPending).toHaveBeenCalled();
       expect(useAppStore.getState().selectedRoute).toBe('bogota');
-      expect(getBgColor(bogBtn)).toBe('#86efac');
-      expect(getBgColor(medBtn)).toBe('#93c5fd');
+      expect(getBgColor(getByTestId('route-bogota-btn'))).toBe('#86efac');
+      expect(getBgColor(getByTestId('route-medellin-btn'))).toBe('#93c5fd');
     });
 
     it('secuencia Bogotá reinicia 0: primer punto Bogotá 4.7110,-74.0721 tras switch', async () => {
