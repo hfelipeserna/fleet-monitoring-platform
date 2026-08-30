@@ -103,6 +103,8 @@ jest.setTimeout(30000);
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
     // Arrange
+    jest.useFakeTimers();
+    jest.clearAllTimers();
     act(() => resetStore());
     jest.clearAllMocks();
     mockEnqueue.mockClear();
@@ -111,8 +113,6 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     mockCountPending.mockResolvedValue(0);
     intervalRegistry.clearAll();
     intervalRegistry.reset();
-    jest.clearAllTimers();
-    jest.useFakeTimers();
     injectTelemetryPort({
       clearPending: (...args: any[]) => (mockClearPending as any)(...args),
       enqueue: (...args: any[]) => (mockEnqueue as any)(...args),
@@ -135,12 +135,12 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   });
 
   afterEach(() => {
+    jest.clearAllTimers();
     cleanup();
     intervalRegistry.clearAll();
     intervalRegistry.reset();
-    jest.clearAllTimers();
     jest.useRealTimers();
-    jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('connected ON -> click Medellin -> purga + Medellin verde Bogota azul + encolado 5s', () => {
