@@ -12,16 +12,24 @@ import { useSync } from './hooks/useSync';
 import { useAppStore } from './store/appStore';
 import { initDatabase } from './db';
 import { injectTelemetryPort, injectIntervalPort } from './store/appStore';
-import { getTelemetryPort } from './store/ports';
+import { getTelemetryPort, getIntervalPort } from './store/ports';
 import { telemetryPort } from './db/telemetryPort';
 import { intervalRegistry } from './store/intervalRegistry';
 
-injectTelemetryPort(telemetryPort);
-injectIntervalPort({
-  register: (id: number) => intervalRegistry.register(id),
-  clear: (id: number) => intervalRegistry.clear(id),
-  clearAll: () => intervalRegistry.clearAll(),
-});
+if (!getTelemetryPort()) injectTelemetryPort(telemetryPort);
+if (!getIntervalPort())
+  injectIntervalPort({
+    register: (id: number) => intervalRegistry.register(id),
+    clear: (id: number) => intervalRegistry.clear(id),
+    clearAll: () => intervalRegistry.clearAll(),
+  });
+
+export async function getPendingCountSafe(): Promise<number> {
+  const port = getTelemetryPort();
+  if (port) return port.countPending();
+  const mod = await import('./db/telemetry');
+  return mod.countPending();
+}
 
 export default function App() {
   useNetInfo();
@@ -33,22 +41,33 @@ export default function App() {
   const simOn = useAppStore((s) => s.simOn);
   const isDisconnecting = useAppStore((s) => s.isDisconnecting);
   const [pending, setPending] = useState(0);
+  const pendingRef = React.useRef(pending);
+  React.useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
 
   useEffect(() => {
+    const cur = useAppStore.getState().db;
+    if (cur === 'OK') return;
     let cancelled = false;
-    const t0 = Date.now();
-    initDatabase()
-      .then((status) => {
+    const run = async () => {
+      try {
+        const t0 = Date.now();
+        const status = await initDatabase();
         if (cancelled) return;
         const ms = Date.now() - t0;
-        if (ms > 1000) {
+        if (ms > 1000 && ms < 5000) {
           console.warn(`[db] init slow ${ms}ms`);
         }
-        useAppStore.setState({ db: status });
-      })
-      .catch(() => {
-        if (!cancelled) useAppStore.setState({ db: 'ERROR' });
-      });
+        const curNow = useAppStore.getState().db;
+        if (curNow !== status) useAppStore.setState({ db: status });
+      } catch {
+        if (cancelled) return;
+        const curNow = useAppStore.getState().db;
+        if (curNow !== 'ERROR') useAppStore.setState({ db: 'ERROR' });
+      }
+    };
+    void run();
     return () => {
       cancelled = true;
     };
@@ -58,16 +77,22 @@ export default function App() {
     let cancelled = false;
     const load = async () => {
       try {
-        const port = getTelemetryPort();
-        const c = port ? await port.countPending() : await (await import('./db/telemetry')).countPending();
-        if (!cancelled) setPending(c);
+        const c = await getPendingCountSafe();
+        if (cancelled) return;
+        if (pendingRef.current === c) return;
+        pendingRef.current = c;
+        setPending(c);
       } catch {}
     };
-    load();
+    void load();
     const id = setInterval(load, 2000);
+    const port = getIntervalPort();
+    if (port) port.register(id as unknown as number);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      const p = getIntervalPort();
+      if (p) p.clear(id as unknown as number);
+      else clearInterval(id);
     };
   }, [conn, plate]);
 
@@ -83,9 +108,11 @@ export default function App() {
       await hookDisconnect();
     } finally {
       try {
-        const port = getTelemetryPort();
-        const c = port ? await port.countPending() : await (await import('./db/telemetry')).countPending();
-        setPending(c);
+        const c = await getPendingCountSafe();
+        if (pendingRef.current !== c) {
+          pendingRef.current = c;
+          setPending(c);
+        }
       } catch {}
     }
   };

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store/appStore';
-import { getTelemetryPort } from '../store/ports';
+import { getTelemetryPort, getIntervalPort } from '../store/ports';
 import { flushPending } from '../lib/sync';
 
 export function useSync(): void {
@@ -49,7 +49,7 @@ export function useSync(): void {
       if (pendingCount === 0) {
         try {
           const { net: curNet2, conn: curConn2, db: curDb, sync: curSync } = useAppStore.getState();
-          if (curDb === 'OK' && curNet2 === 'OK' && curConn2 === 'connected' && curSync !== 'CONNECTED') {
+          if (curDb === 'OK' && curNet2 === 'OK' && curConn2 === 'connected' && curSync === 'ERROR') {
             useAppStore.getState().setSync('CONNECTED');
           }
           retryAttemptsRef.current = 0;
@@ -75,7 +75,7 @@ export function useSync(): void {
             const { net: curNet3, conn: curConn3, db: curDb3 } = useAppStore.getState();
             if (curDb3 === 'OK' && curNet3 === 'OK' && curConn3 === 'connected') {
               const curSync3 = useAppStore.getState().sync;
-              if (curSync3 !== 'CONNECTED') useAppStore.getState().setSync('CONNECTED');
+              if (curSync3 === 'ERROR') useAppStore.getState().setSync('CONNECTED');
             }
           } catch {}
         }
@@ -147,12 +147,15 @@ export function useSync(): void {
     };
 
     checkAndFlush();
-    intervalRef.current = setInterval(() => {
+    const id = setInterval(() => {
       const { net: curNet, conn: curConn } = useAppStore.getState();
       if (curNet === 'OK' && curConn === 'connected') {
         void triggerIfReady().then(() => checkAndFlush());
       }
     }, 5000);
+    const port = getIntervalPort();
+    if (port) port.register(id as unknown as number);
+    intervalRef.current = id;
 
     const unsub = useAppStore.subscribe((state, prev) => {
       if (state.net === 'OK' && state.conn === 'connected' && (prev.net !== 'OK' || prev.conn !== 'connected' || prev.db !== 'OK' || prev.sync === 'ERROR')) {
@@ -173,7 +176,10 @@ export function useSync(): void {
 
     return () => {
       if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current as unknown as number);
+        const idNum = intervalRef.current as unknown as number;
+        const p = getIntervalPort();
+        if (p) p.clear(idNum);
+        else clearInterval(idNum);
         intervalRef.current = null;
       }
       clearBackoff();

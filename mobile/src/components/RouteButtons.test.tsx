@@ -2,7 +2,7 @@
 // TASK-005-06 TDD RED: Rutas Medellín/Bogotá con purga + verde seleccionado + encolado 5s + uuid + plate se mantiene
 
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
+import { render, fireEvent, act, cleanup } from '@testing-library/react-native';
 
 jest.mock('expo-constants', () => ({
   default: { expoConfig: { extra: { apiUrl: 'http://localhost:8080' } } },
@@ -36,6 +36,14 @@ jest.mock('../db/telemetry', () => ({
   _mockQueue: [],
 }), { virtual: true });
 
+jest.mock('../hooks/useSync', () => ({
+  useSync: jest.fn(),
+}));
+
+jest.mock('../hooks/useNetInfo', () => ({
+  useNetInfo: jest.fn(),
+}));
+
 // Mock routes ~20 pts each, speed variado 0/45/85, lat/lon reales Medellín/Bogotá
 jest.mock('../routes/medellin', () => ({
   MEDELLIN_ROUTE: Array.from({ length: 20 }, (_, i) => ({
@@ -55,6 +63,7 @@ jest.mock('../routes/bogota', () => ({
 
 import { useAppStore } from '../store/appStore';
 import { intervalRegistry } from '../store/intervalRegistry';
+import { injectTelemetryPort, injectIntervalPort } from '../store/ports';
 import App from '../App';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,6 +92,13 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
+async function flushMicrotasks() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 jest.setTimeout(30000);
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
@@ -91,8 +107,25 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     jest.clearAllMocks();
     mockEnqueue.mockClear();
     mockClearPending.mockClear();
+    mockCountPending.mockClear();
+    mockCountPending.mockResolvedValue(0);
+    intervalRegistry.clearAll();
     intervalRegistry.reset();
+    jest.clearAllTimers();
     jest.useFakeTimers();
+    injectTelemetryPort({
+      clearPending: (...args: any[]) => (mockClearPending as any)(...args),
+      enqueue: (...args: any[]) => (mockEnqueue as any)(...args),
+      countPending: (...args: any[]) => (mockCountPending as any)(...args),
+      getPending: (...args: any[]) => (mockGetPending as any)(...args),
+      markSynced: (...args: any[]) => (mockMarkSynced as any)(...args),
+    } as any);
+    injectIntervalPort({
+      register: (id: number) => intervalRegistry.register(id),
+      clear: (id: number) => intervalRegistry.clear(id),
+      clearAll: () => intervalRegistry.clearAll(),
+    });
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     (global as any).fetch = jest.fn().mockResolvedValue({
       status: 202,
       ok: true,
@@ -101,11 +134,18 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     } as any);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Arrange - teardown determinístico: flush + cleanup antes de hook timeout
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    cleanup();
+    intervalRegistry.clearAll();
     intervalRegistry.reset();
     jest.clearAllTimers();
     jest.useRealTimers();
-    jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('connected ON -> click Medellin -> purga + Medellin verde Bogota azul + encolado 5s', () => {
