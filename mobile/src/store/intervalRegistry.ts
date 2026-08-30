@@ -9,17 +9,18 @@ export class IntervalRegistry {
     this.ids.delete(id);
   }
   clearAll(): void {
-    if (this.ids.size === 0) {
-      clearInterval(0 as unknown as number);
+    for (const id of this.ids) {
+      try {
+        clearInterval(id);
+      } catch {}
     }
-    for (const id of this.ids) clearInterval(id);
     this.ids.clear();
   }
   getIds(): number[] {
     return [...this.ids];
   }
   reset(): void {
-    this.ids.clear();
+    this.clearAll();
   }
 }
 

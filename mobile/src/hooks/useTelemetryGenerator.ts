@@ -1,4 +1,6 @@
-import 'react-native-get-random-values';
+try {
+  require('react-native-get-random-values');
+} catch {}
 import { useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import * as Location from 'expo-location';
@@ -109,56 +111,58 @@ export function useTelemetryGenerator(telemetryPort?: TelemetryPort, intervalPor
       }
     }
 
-    const id = setInterval(async () => {
-      try {
-        const state = useAppStore.getState();
-        const plate = state.plate;
-        if (!plate) return;
-        let pt: { lat: number; lon: number; speed: number };
-        const curSimOn = state.simOn;
-        const curRouteKind = state.selectedRoute;
-        const curIdx = (state as unknown as { selectedRouteIdx?: number }).selectedRouteIdx ?? 0;
-        if (curSimOn && curRouteKind) {
-          const route = curRouteKind === 'medellin' ? MEDELLIN_ROUTE : BOGOTA_ROUTE;
-          pt = nextSimPoint(route as unknown as Array<{ lat: number; lon: number; speed: number }>, curIdx);
-          const nextIdx = route.length > 0 ? (curIdx + 1) % route.length : 0;
-          useAppStore.setState({ selectedRouteIdx: nextIdx } as unknown as Record<string, unknown>);
-        } else {
-          const cached = latestPosRef.current;
-          if (cached) {
-            pt = cached;
+    const id = setInterval(() => {
+      void (async () => {
+        try {
+          const state = useAppStore.getState();
+          const plate = state.plate;
+          if (!plate) return;
+          let pt: { lat: number; lon: number; speed: number };
+          const curSimOn = state.simOn;
+          const curRouteKind = state.selectedRoute;
+          const curIdx = (state as unknown as { selectedRouteIdx?: number }).selectedRouteIdx ?? 0;
+          if (curSimOn && curRouteKind) {
+            const route = curRouteKind === 'medellin' ? MEDELLIN_ROUTE : BOGOTA_ROUTE;
+            pt = nextSimPoint(route as unknown as Array<{ lat: number; lon: number; speed: number }>, curIdx);
+            const nextIdx = route.length > 0 ? (curIdx + 1) % route.length : 0;
+            useAppStore.setState({ selectedRouteIdx: nextIdx } as unknown as Record<string, unknown>);
           } else {
-            if (permissionGrantedRef.current === false) return;
-            if (permissionGrantedRef.current === null) {
+            const cached = latestPosRef.current;
+            if (cached) {
+              pt = cached;
+            } else {
+              if (permissionGrantedRef.current === false) return;
+              if (permissionGrantedRef.current === null) {
+                try {
+                  const perm = await Location.requestForegroundPermissionsAsync();
+                  permissionGrantedRef.current = perm.status === 'granted';
+                  if (!permissionGrantedRef.current) return;
+                } catch {
+                  return;
+                }
+              }
               try {
-                const perm = await Location.requestForegroundPermissionsAsync();
-                permissionGrantedRef.current = perm.status === 'granted';
-                if (!permissionGrantedRef.current) return;
+                const pos = await Location.getCurrentPositionAsync({});
+                pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, speed: pos.coords.speed ?? 0 };
               } catch {
                 return;
               }
             }
-            try {
-              const pos = await Location.getCurrentPositionAsync({});
-              pt = { lat: pos.coords.latitude, lon: pos.coords.longitude, speed: pos.coords.speed ?? 0 };
-            } catch {
-              return;
-            }
           }
-        }
-        await enqueuePoint(
-          {
-            plate,
-            lat: pt.lat,
-            lon: pt.lon,
-            speed: Math.round(pt.speed ?? 0),
-            client_event_id: uuidv4(),
-            occurred_at: new Date().toISOString(),
-            sync_status: 'pending',
-          },
-          telemetryPort,
-        );
-      } catch {}
+          await enqueuePoint(
+            {
+              plate,
+              lat: pt.lat,
+              lon: pt.lon,
+              speed: Math.round(pt.speed ?? 0),
+              client_event_id: uuidv4(),
+              occurred_at: new Date().toISOString(),
+              sync_status: 'pending',
+            },
+            telemetryPort,
+          );
+        } catch {}
+      })().catch(() => {});
     }, 5000);
 
     if (intervalPort) intervalPort.register(id as unknown as number);

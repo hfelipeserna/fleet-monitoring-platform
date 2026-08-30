@@ -85,7 +85,9 @@ export default function App() {
       } catch {}
     };
     void load();
-    const id = setInterval(load, 2000);
+    const id = setInterval(() => {
+      void load().catch(() => {});
+    }, 2000);
     const port = getIntervalPort();
     if (port) port.register(id as unknown as number);
     return () => {

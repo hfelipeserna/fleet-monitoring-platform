@@ -184,53 +184,70 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     }, 30000);
 
     it('encola pending cada 5s con client_event_id uuid, lat/lon Medellín reales y speed 0/45/85 tras Medellín', async () => {
-      // Arrange
+      // Arrange — Covers [SPEC-005: AC-006] FR-006 FR-007 — determinístico sin fake timers
+      // No usa jest.advanceTimersByTime; captura callback de setInterval y la invoca manualmente.
+      // Evita Node 24 crypto.getRandomValues no-writable y drenado frágil de microtasks con fake timers modern.
+      const setIntervalSpy = jest.spyOn(global, 'setInterval' as any);
       act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
+      expect(getBgColor(medBtn)).toBe('#93c5fd');
 
       // Act
       await act(async () => {
         fireEvent.press(medBtn);
         await Promise.resolve();
-        await Promise.resolve();
       });
+      await flushMicrotasks();
+      const calls5000 = setIntervalSpy.mock.calls.filter((c: any) => c[1] === 5000);
+      expect(calls5000.length).toBeGreaterThan(0);
+      const intervalCb = (calls5000[calls5000.length - 1] as any)[0] as () => Promise<void>;
       await act(async () => {
-        jest.advanceTimersByTime(5000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await intervalCb();
       });
+      await flushMicrotasks();
 
       // Assert
-      expect(mockEnqueue).toHaveBeenCalled();
+      expect(mockClearPending).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().selectedRoute).toBe('medellin');
+      expect(useAppStore.getState().plate).toBe('TGY589');
+      expect(getBgColor(getByTestId('route-medellin-btn'))).toBe('#86efac');
+      expect(intervalRegistry.getIds().length).toBeGreaterThan(0);
+      expect(mockEnqueue).toHaveBeenCalledTimes(1);
       const firstCall = mockEnqueue.mock.calls[0][0];
       expect(firstCall.client_event_id).toMatch(UUID_RE);
       expect(firstCall.plate).toBe('TGY589');
       expect(firstCall.lat).toBeCloseTo(6.2442, 1);
       expect(firstCall.lon).toBeCloseTo(-75.5812, 1);
       expect([0, 45, 85]).toContain(firstCall.speed);
-      // Verifica intervalRegistry registra 5s
-      const ids = intervalRegistry.getIds();
-      expect(ids.length).toBeGreaterThan(0);
-      // And setInterval spy should have been called with 5000 (telemetry gen)
-      // Check that at least 5s timer exists via advance: second tick
       mockEnqueue.mockClear();
       await act(async () => {
-        jest.advanceTimersByTime(5000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await intervalCb();
       });
-      expect(mockEnqueue).toHaveBeenCalled();
+      await flushMicrotasks();
+      expect(mockEnqueue).toHaveBeenCalledTimes(1);
       const secondCall = mockEnqueue.mock.calls[0][0];
+      expect(secondCall.client_event_id).toMatch(UUID_RE);
+      expect(secondCall.client_event_id).not.toBe(firstCall.client_event_id);
       expect(secondCall.speed).toBeDefined();
-    }, 30000);
+      setIntervalSpy.mockRestore();
+    });
 
     it('secuencia desde 0 tras seleccionar Medellín (primer punto Medellín, no continúa previo)', async () => {
-      // Arrange
-      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'bogota' as any } as any));
-      // Simulate previo había encolado bogotá, ahora purga y debe reiniciar en 0 de Medellín
+      // Arrange — Covers [SPEC-005: AC-006] FR-006 — purga + reinicia idx 0 determinístico
+      const setIntervalSpy = jest.spyOn(global, 'setInterval' as any);
+      act(() =>
+        useAppStore.setState({
+          conn: 'connected',
+          simOn: true,
+          simEnabled: true,
+          plate: 'TGY589',
+          selectedRoute: 'bogota' as any,
+          selectedRouteIdx: 7,
+        } as any),
+      );
       mockEnqueue.mockClear();
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
@@ -240,20 +257,26 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       await act(async () => {
         fireEvent.press(medBtn);
         await Promise.resolve();
-        await Promise.resolve();
       });
+      await flushMicrotasks();
+      expect(useAppStore.getState().selectedRouteIdx).toBe(0);
+      const calls5000 = setIntervalSpy.mock.calls.filter((c: any) => c[1] === 5000);
+      expect(calls5000.length).toBeGreaterThan(0);
+      const intervalCb = (calls5000[calls5000.length - 1] as any)[0] as () => Promise<void>;
       await act(async () => {
-        jest.advanceTimersByTime(5000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await intervalCb();
       });
+      await flushMicrotasks();
 
       // Assert
       expect(mockClearPending).toHaveBeenCalled();
+      expect(useAppStore.getState().selectedRoute).toBe('medellin');
       const call = mockEnqueue.mock.calls[0][0];
       expect(call.lat).toBeCloseTo(6.2442, 1);
       expect(call.lon).toBeCloseTo(-75.5812, 1);
-      expect(useAppStore.getState().selectedRoute).toBe('medellin');
+      expect(call.client_event_id).toMatch(UUID_RE);
+      expect(useAppStore.getState().selectedRouteIdx).toBe(1);
+      setIntervalSpy.mockRestore();
     });
 
     it('placa se mantiene al seleccionar Medellín', async () => {
