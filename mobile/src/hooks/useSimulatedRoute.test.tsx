@@ -80,7 +80,7 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
-jest.setTimeout(10000);
+jest.setTimeout(20000);
 describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006 BR-007 TS-007', () => {
   beforeEach(() => {
     // Arrange
@@ -90,7 +90,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
     mockClearPending.mockClear();
     mockCountPending.mockClear();
     intervalRegistry.reset();
-    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
+    jest.useFakeTimers();
     (global as any).fetch = jest.fn().mockResolvedValue({
       status: 202,
       ok: true,

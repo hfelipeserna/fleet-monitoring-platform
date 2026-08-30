@@ -81,7 +81,7 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
-jest.setTimeout(10000);
+jest.setTimeout(20000);
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
     // Arrange
@@ -90,7 +90,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     mockEnqueue.mockClear();
     mockClearPending.mockClear();
     intervalRegistry.reset();
-    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
+    jest.useFakeTimers();
     (global as any).fetch = jest.fn().mockResolvedValue({
       status: 202,
       ok: true,

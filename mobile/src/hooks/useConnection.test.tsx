@@ -50,7 +50,7 @@ describe('useConnection', () => {
   beforeEach(() => {
     // Arrange baseline
     resetStore();
-    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
+    jest.useFakeTimers();
     jest.clearAllMocks();
     fetchSpy = jest.spyOn(global as any, 'fetch').mockResolvedValue({
       status: 202,
