@@ -1,0 +1,664 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 6 wireframes snapshot fidelidad renders App snapshot with 6 wireframes structure 1`] = `
+<View
+  style={
+    {
+      "alignItems": "center",
+      "backgroundColor": "#ffffff",
+      "flex": 1,
+      "justifyContent": "center",
+      "padding": 16,
+    }
+  }
+>
+  <Text
+    style={
+      {
+        "color": "#111827",
+        "fontFamily": "Sketch",
+        "fontSize": 20,
+        "fontWeight": "600",
+        "marginBottom": 12,
+      }
+    }
+  >
+    fleet-mobile
+  </Text>
+  <View>
+    <TextInput
+      accessibilityLabel="Plate"
+      autoCapitalize="characters"
+      maxLength={6}
+      onChangeText={[Function]}
+      placeholder="ACF356"
+      testID="plate-input"
+      value=""
+    />
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": true,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#e5e7eb",
+          "borderRadius": 8,
+          "justifyContent": "center",
+          "minHeight": 44,
+          "padding": 12,
+        }
+      }
+      testID="connect-btn"
+    >
+      <Text>
+        Connect
+      </Text>
+    </View>
+  </View>
+  <View>
+    <Text
+      style={
+        {
+          "color": "#dc2626",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="sync-status"
+    >
+      Syncing data CONNECTING
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#16a34a",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="db-status"
+    >
+      WatermelonDB status ○ OK
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#16a34a",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="net-status"
+    >
+      Network connectivity ○ OK
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "justifyContent": "space-between",
+        "marginTop": 10,
+        "minHeight": 44,
+        "paddingHorizontal": 8,
+        "width": "100%",
+      }
+    }
+  >
+    <Text
+      style={
+        {
+          "color": "#111827",
+          "fontSize": 14,
+        }
+      }
+    >
+      Activar ruta simulada
+    </Text>
+    <View
+      accessibilityLabel="Activar ruta simulada"
+      accessibilityState={
+        {
+          "disabled": true,
+        }
+      }
+      disabled={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onChange={[Function]}
+      onTintColor="#e5e7eb"
+      onValueChange={[Function]}
+      style={
+        {
+          "minHeight": 44,
+        }
+      }
+      testID="sim-toggle"
+      thumbColor="#ffffff"
+      thumbTintColor="#ffffff"
+      tintColor="#e5e7eb"
+      trackColor={
+        {
+          "false": "#e5e7eb",
+          "true": "#e5e7eb",
+        }
+      }
+      value={false}
+    />
+  </View>
+  <Text
+    style={
+      {
+        "marginTop": 8,
+      }
+    }
+  >
+    Activar ruta simulada OFF
+  </Text>
+  <View
+    style={
+      {
+        "flexDirection": "row",
+        "gap": 8,
+        "marginTop": 8,
+      }
+    }
+  >
+    <View
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": true,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#e5e7eb",
+          "borderRadius": 6,
+          "justifyContent": "center",
+          "minHeight": 44,
+          "opacity": 0.6,
+          "padding": 10,
+        }
+      }
+      testID="route-medellin-btn"
+    >
+      <Text>
+        Ruta urbana Medellín
+      </Text>
+    </View>
+    <View
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": true,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#e5e7eb",
+          "borderRadius": 6,
+          "justifyContent": "center",
+          "minHeight": 44,
+          "opacity": 0.6,
+          "padding": 10,
+        }
+      }
+      testID="route-bogota-btn"
+    >
+      <Text>
+        Ruta urbana Bogotá
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      {
+        "color": "#6b7280",
+        "marginTop": 12,
+      }
+    }
+  >
+    pending 0
+  </Text>
+</View>
+`;
+
+exports[`App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011 snapshot 6 wireframes exactos snapshot estable incluye colores wireframes #86efac #f9a8d4 #93c5fd #16a34a (y #e5e7eb en OFF) - CONNECTED verde 1`] = `
+<View
+  style={
+    {
+      "alignItems": "center",
+      "backgroundColor": "#ffffff",
+      "flex": 1,
+      "justifyContent": "center",
+      "padding": 16,
+    }
+  }
+>
+  <Text
+    style={
+      {
+        "color": "#111827",
+        "fontFamily": "Sketch",
+        "fontSize": 20,
+        "fontWeight": "600",
+        "marginBottom": 12,
+      }
+    }
+  >
+    fleet-mobile
+  </Text>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "width": "100%",
+      }
+    }
+  >
+    <Text
+      testID="plate-display"
+    >
+      ACF356
+    </Text>
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#f9a8d4",
+          "borderRadius": 8,
+          "justifyContent": "center",
+          "marginTop": 8,
+          "minHeight": 44,
+          "opacity": 1,
+          "padding": 12,
+        }
+      }
+      testID="disconnect-btn"
+    >
+      <Text>
+        Disconnect
+      </Text>
+    </View>
+  </View>
+  <View>
+    <Text
+      style={
+        {
+          "color": "#16a34a",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="sync-status"
+    >
+      Syncing data CONNECTED
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#16a34a",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="db-status"
+    >
+      WatermelonDB status ○ OK
+    </Text>
+    <Text
+      style={
+        {
+          "color": "#16a34a",
+          "fontFamily": "Sketch",
+        }
+      }
+      testID="net-status"
+    >
+      Network connectivity ○ OK
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "justifyContent": "space-between",
+        "marginTop": 10,
+        "minHeight": 44,
+        "paddingHorizontal": 8,
+        "width": "100%",
+      }
+    }
+  >
+    <Text
+      style={
+        {
+          "color": "#111827",
+          "fontSize": 14,
+        }
+      }
+    >
+      Activar ruta simulada
+    </Text>
+    <View
+      accessibilityLabel="Activar ruta simulada"
+      accessibilityState={
+        {
+          "disabled": false,
+        }
+      }
+      disabled={false}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onChange={[Function]}
+      onTintColor="#e5e7eb"
+      onValueChange={[Function]}
+      style={
+        {
+          "minHeight": 44,
+        }
+      }
+      testID="sim-toggle"
+      thumbColor="#ffffff"
+      thumbTintColor="#ffffff"
+      tintColor="#e5e7eb"
+      trackColor={
+        {
+          "false": "#e5e7eb",
+          "true": "#e5e7eb",
+        }
+      }
+      value={false}
+    />
+  </View>
+  <Text
+    style={
+      {
+        "marginTop": 8,
+      }
+    }
+  >
+    Activar ruta simulada OFF
+  </Text>
+  <View
+    style={
+      {
+        "flexDirection": "row",
+        "gap": 8,
+        "marginTop": 8,
+      }
+    }
+  >
+    <View
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": true,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#e5e7eb",
+          "borderRadius": 6,
+          "justifyContent": "center",
+          "minHeight": 44,
+          "opacity": 0.6,
+          "padding": 10,
+        }
+      }
+      testID="route-medellin-btn"
+    >
+      <Text>
+        Ruta urbana Medellín
+      </Text>
+    </View>
+    <View
+      accessibilityRole="button"
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": true,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={
+        {
+          "bottom": 10,
+          "left": 10,
+          "right": 10,
+          "top": 10,
+        }
+      }
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#e5e7eb",
+          "borderRadius": 6,
+          "justifyContent": "center",
+          "minHeight": 44,
+          "opacity": 0.6,
+          "padding": 10,
+        }
+      }
+      testID="route-bogota-btn"
+    >
+      <Text>
+        Ruta urbana Bogotá
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      {
+        "color": "#6b7280",
+        "marginTop": 12,
+      }
+    }
+  >
+    pending 0
+  </Text>
+</View>
+`;

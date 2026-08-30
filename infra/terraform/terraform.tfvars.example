@@ -1,0 +1,11 @@
+project           = "fleet"
+region            = "us-east-1"
+environment       = "dev"
+vpc_cidr          = "10.0.0.0/16"
+db_name           = "fleet"
+db_username       = "fleet"
+db_instance_class = "db.t3.micro"
+# db_password is intentionally omitted — inject via TF_VAR_db_password env var or secrets manager
+# image_api       = "ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/fleet-api:latest"
+# image_ingest    = "ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/fleet-ingest:latest"
+# image_consumer  = "ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/fleet-consumer:latest"
