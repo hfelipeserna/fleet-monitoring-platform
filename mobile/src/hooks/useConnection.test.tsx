@@ -50,7 +50,7 @@ describe('useConnection', () => {
   beforeEach(() => {
     // Arrange baseline
     resetStore();
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
     jest.clearAllMocks();
     fetchSpy = jest.spyOn(global as any, 'fetch').mockResolvedValue({
       status: 202,
@@ -68,6 +68,7 @@ describe('useConnection', () => {
   });
 
   afterEach(async () => {
+    jest.clearAllTimers();
     jest.useRealTimers();
     fetchSpy.mockRestore();
     jest.restoreAllMocks();
@@ -86,11 +87,14 @@ describe('useConnection', () => {
 
       // Act
       expect(getByTestId('conn-state').props.children).toBe('idle');
-      fireEvent.press(getByTestId('connect-trigger'));
-      // immediate connecting state should be visible
-      // flush microtasks
       await act(async () => {
+        fireEvent.press(getByTestId('connect-trigger'));
+        await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -105,7 +109,11 @@ describe('useConnection', () => {
       // Act - resolve fetch -> connected
       await act(async () => {
         await Promise.resolve();
+      });
+      act(() => {
         jest.runAllTimers();
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -141,15 +149,22 @@ describe('useConnection', () => {
       const { getByTestId, getByText } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
+        fireEvent.press(getByTestId('connect-trigger'));
+        await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
       expect(getByText(/Syncing data CONNECTING/i)).toBeTruthy();
 
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -182,10 +197,15 @@ describe('useConnection', () => {
       const { getByTestId } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
+      await act(async () => {
+        fireEvent.press(getByTestId('connect-trigger'));
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.runAllTimers();
+      });
       await act(async () => {
         await Promise.resolve();
-        jest.runAllTimers();
       });
 
       // Assert
@@ -209,11 +229,17 @@ describe('useConnection', () => {
       const { getByTestId, getByText } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(0);
+      });
+      act(() => {
         jest.runAllTimers();
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -237,11 +263,17 @@ describe('useConnection', () => {
       const { getByTestId, getByText } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(0);
+      });
+      act(() => {
         jest.runAllTimers();
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -264,15 +296,21 @@ describe('useConnection', () => {
         json: async () => ({ error: 'backpressure' }),
       } as any);
       // ensure net OK
-      useAppStore.setState({ net: 'OK' } as any);
+      act(() => { useAppStore.setState({ net: 'OK' } as any); });
       const { getByTestId, getByText } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(0);
+      });
+      act(() => {
         jest.runAllTimers();
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -331,15 +369,16 @@ describe('useConnection', () => {
   describe('onConnect disabled logic', () => {
     it('does not call fetch when WatermelonDB is ERROR', async () => {
       // Arrange
-      useAppStore.setState({ db: 'ERROR', net: 'OK', conn: 'idle' } as any);
+      act(() => { useAppStore.setState({ db: 'ERROR', net: 'OK', conn: 'idle' } as any); });
       const { getByTestId } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
       });
+      act(() => { jest.advanceTimersByTime(0); });
+      await act(async () => { await Promise.resolve(); });
 
       // Assert
       // Should transition directly to error without fetch
@@ -351,16 +390,17 @@ describe('useConnection', () => {
 
     it('does not call fetch when Network is ERROR (no 202) -> error after timeout', async () => {
       // Arrange
-      useAppStore.setState({ db: 'OK', net: 'ERROR', conn: 'idle' } as any);
+      act(() => { useAppStore.setState({ db: 'OK', net: 'ERROR', conn: 'idle' } as any); });
       // fetch should not be attempted or should timeout
       const { getByTestId } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(5000);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
       });
+      act(() => { jest.advanceTimersByTime(5000); });
+      await act(async () => { await Promise.resolve(); });
 
       // Assert
       await waitFor(() => expect(['error', 'connecting']).toContain(useAppStore.getState().conn));
@@ -377,11 +417,12 @@ describe('useConnection', () => {
 
       // Act - attempt connect with invalid plate 'ACF35' (5 chars) should be rejected by hook guard
       // Our harness uses plate ACF35 which is invalid per PLATE_RE
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
       });
+      act(() => { jest.advanceTimersByTime(0); });
+      await act(async () => { await Promise.resolve(); });
 
       // Assert
       // Hook should validate plate regex and transition to error or stay idle without 202 success
@@ -402,13 +443,13 @@ describe('useConnection', () => {
       const { getByTestId } = render(<Harness plate="TGY589" />);
 
       // Act
-      fireEvent.press(getByTestId('connect-trigger'));
       await act(async () => {
-        jest.advanceTimersByTime(0);
-        await Promise.resolve();
-        jest.runAllTimers();
+        fireEvent.press(getByTestId('connect-trigger'));
         await Promise.resolve();
       });
+      act(() => { jest.advanceTimersByTime(0); });
+      act(() => { jest.runAllTimers(); });
+      await act(async () => { await Promise.resolve(); });
 
       // Assert
       await waitFor(() => expect(useAppStore.getState().conn).toBe('connected'));

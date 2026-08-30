@@ -29,6 +29,22 @@ jest.mock('./db/telemetry', () => ({
   markSynced: jest.fn(async () => {}),
 }), { virtual: true });
 
+jest.mock('./db', () => ({
+  initDatabase: jest.fn(async () => 'OK'),
+}));
+
+jest.mock('./hooks/useSync', () => ({
+  useSync: jest.fn(),
+}));
+
+jest.mock('./hooks/useNetInfo', () => ({
+  useNetInfo: jest.fn(),
+}));
+
+jest.mock('./hooks/useTelemetryGenerator', () => ({
+  useTelemetryGenerator: jest.fn(),
+}));
+
 import App from './App';
 import { useAppStore } from './store/appStore';
 
@@ -129,7 +145,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
 
     it('exposes disconnect-btn when connected and plate-display', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', plate: 'ACF356', simOn: false } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', plate: 'ACF356', simOn: false } as unknown as Record<string, unknown>); });
 
       // Act
       const { getByTestId } = render(<App />);
@@ -149,7 +165,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
       const connectBtn = getByTestId('connect-btn');
 
       // Act
-      fireEvent.changeText(input, 'acf356');
+      act(() => { fireEvent.changeText(input, 'acf356'); });
 
       // Assert
       const bg = getBgColor(connectBtn);
@@ -167,7 +183,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
       const connectBtn = getByTestId('connect-btn');
 
       // Act
-      fireEvent.changeText(input, 'ACF35');
+      act(() => { fireEvent.changeText(input, 'ACF35'); });
 
       // Assert
       const bg = getBgColor(connectBtn);
@@ -178,7 +194,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
 
     it('Disconnect rosa #f9a8d4', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', plate: 'TGY589' } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', plate: 'TGY589' } as unknown as Record<string, unknown>); });
       const { getByTestId } = render(<App />);
 
       // Act
@@ -193,7 +209,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
 
     it('Syncing verde #16a34a cuando CONNECTED, rojo #dc2626 cuando CONNECTING/ERROR', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>); });
 
       // Act
       const { getByTestId, rerender } = render(<App />);
@@ -221,7 +237,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
 
     it('OK verde #16a34a y ERROR rojo #dc2626 en dots', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK' } as unknown as Record<string, unknown>); });
       const { getByTestId, rerender } = render(<App />);
 
       // Act
@@ -251,7 +267,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
 
     it('ruta gris #e5e7eb cuando sim OFF, azul #93c5fd cuando sim ON sin selección, verde #86efac seleccionado', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: false, selectedRoute: null } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', simOn: false, selectedRoute: null } as unknown as Record<string, unknown>); });
       const { getByTestId, rerender } = render(<App />);
 
       // Act
@@ -332,7 +348,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
   describe('touch targets >=44pt AC-012 NFR-007', () => {
     it('Connect, Disconnect, sim-toggle y rutas tienen hitSlop o minHeight >=44', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', plate: 'ACF356', simOn: true, selectedRoute: null } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', plate: 'ACF356', simOn: true, selectedRoute: null } as unknown as Record<string, unknown>); });
       const { getByTestId, rerender } = render(<App />);
 
       // Act
@@ -364,7 +380,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
   describe('snapshot 6 wireframes exactos', () => {
     it('snapshot estable incluye colores wireframes #86efac #f9a8d4 #93c5fd #16a34a (y #e5e7eb en OFF) - CONNECTED verde', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: true, selectedRoute: 'medellin' } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: true, selectedRoute: 'medellin' } as unknown as Record<string, unknown>); });
 
       // Act
       const renderedOn = render(<App />);
@@ -378,7 +394,7 @@ describe('App 6 wireframes // Covers [SPEC-005: AC-012] FR-012 BR-011', () => {
       expect(dumpOn).toContain('Syncing data CONNECTED');
       // gris solo en OFF, verificar segundo render
       // Arrange OFF
-      useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: false, selectedRoute: null } as unknown as Record<string, unknown>);
+      act(() => { useAppStore.setState({ conn: 'connected', sync: 'CONNECTED', net: 'OK', db: 'OK', plate: 'ACF356', simOn: false, selectedRoute: null } as unknown as Record<string, unknown>); });
       const renderedOff = render(<App />);
       const dumpOff = JSON.stringify(renderedOff.toJSON());
       // Assert OFF incluye gris

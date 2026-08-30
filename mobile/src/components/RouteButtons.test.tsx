@@ -90,7 +90,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     mockEnqueue.mockClear();
     mockClearPending.mockClear();
     intervalRegistry.reset();
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
     (global as any).fetch = jest.fn().mockResolvedValue({
       status: 202,
       ok: true,
@@ -159,8 +159,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         fireEvent.press(medBtn);
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -178,8 +180,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       // And setInterval spy should have been called with 5000 (telemetry gen)
       // Check that at least 5s timer exists via advance: second tick
       mockEnqueue.mockClear();
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
       expect(mockEnqueue).toHaveBeenCalled();
@@ -201,8 +205,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         fireEvent.press(medBtn);
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -265,8 +271,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         fireEvent.press(getByTestId('route-medellin-btn'));
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
       expect(mockEnqueue).toHaveBeenCalled();
@@ -278,8 +286,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         fireEvent.press(getByTestId('route-bogota-btn'));
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
@@ -305,16 +315,22 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         await Promise.resolve();
       });
       // Advance 3 intervalos 15s para obtener al menos 3 puntos con speeds diferentes
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
-        await Promise.resolve();
       });
       await act(async () => {
-        jest.advanceTimersByTime(5000);
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -357,8 +373,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       const calls5000 = setSpy.mock.calls.filter((c: any) => c[1] === 5000);
       expect(calls5000.length).toBeGreaterThan(0);
       // And fake timer advance produces enqueue
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
       expect(mockEnqueue).toHaveBeenCalled();
@@ -407,8 +425,10 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       render(<App />);
 
       // Act
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(10000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -427,12 +447,16 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
         fireEvent.press(getByTestId('route-medellin-btn'));
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
-        await Promise.resolve();
       });
       await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 

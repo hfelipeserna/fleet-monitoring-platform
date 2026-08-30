@@ -90,7 +90,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
     mockClearPending.mockClear();
     mockCountPending.mockClear();
     intervalRegistry.reset();
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['Date'] } as any);
     (global as any).fetch = jest.fn().mockResolvedValue({
       status: 202,
       ok: true,
@@ -124,10 +124,13 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
       // Act
       await act(async () => {
         fireEvent(toggle, 'valueChange', false);
-        // toggleSimOn is async: wait microtask
         await Promise.resolve();
         await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -222,8 +225,10 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
         await Promise.resolve();
       });
       // advance 5s
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
         // flush pending promises from interval async
@@ -233,7 +238,11 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -259,14 +268,20 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
         fireEvent(toggle, 'valueChange', false);
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
       await act(async () => {
         await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -296,20 +311,28 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
         fireEvent(toggle, 'valueChange', false);
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
       await act(async () => {
         await Promise.resolve();
+      });
+      act(() => {
         jest.advanceTimersByTime(0);
+      });
+      await act(async () => {
         await Promise.resolve();
       });
 
@@ -333,8 +356,10 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
       expect(useAppStore.getState().simOn).toBe(true);
 
       // Act
-      await act(async () => {
+      act(() => {
         jest.advanceTimersByTime(5000);
+      });
+      await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
