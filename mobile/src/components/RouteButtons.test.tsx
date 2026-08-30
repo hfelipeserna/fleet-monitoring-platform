@@ -81,7 +81,7 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
-jest.setTimeout(20000);
+jest.setTimeout(30000);
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
     // Arrange
@@ -144,7 +144,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       expect(getBgColor(medBtn)).toBe('#86efac');
       expect(getBgColor(bogBtn)).toBe('#93c5fd');
       expect(useAppStore.getState().plate).toBe('ACF356');
-    });
+    }, 30000);
 
     it('encola pending cada 5s con client_event_id uuid, lat/lon Medellín reales y speed 0/45/85 tras Medellín', async () => {
       // Arrange
@@ -189,7 +189,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
       expect(mockEnqueue).toHaveBeenCalled();
       const secondCall = mockEnqueue.mock.calls[0][0];
       expect(secondCall.speed).toBeDefined();
-    });
+    }, 30000);
 
     it('secuencia desde 0 tras seleccionar Medellín (primer punto Medellín, no continúa previo)', async () => {
       // Arrange

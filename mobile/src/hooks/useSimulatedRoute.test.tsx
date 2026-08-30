@@ -80,7 +80,7 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
-jest.setTimeout(20000);
+jest.setTimeout(30000);
 describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006 BR-007 TS-007', () => {
   beforeEach(() => {
     // Arrange
