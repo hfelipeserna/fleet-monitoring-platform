@@ -6,7 +6,7 @@
 - **Spec**: `docs/specs/SPEC-006-infra-chaos-iac/spec.md` (approved)
 - **Autor**: architect
 - **Fecha**: 2026-08-29
-- **Estado**: approved
+- **Estado**: implemented
 
 ## 1. Summary
 

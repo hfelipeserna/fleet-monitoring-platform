@@ -4,7 +4,7 @@
 
 - **SPEC-ID**: SPEC-006
 - **Título**: Caos y carga con k6 (300 vehículos, 10% duplicados, 5% errores) + IaC Terraform (AWS) + Docker Compose local validado — Sec. 4.E PRUEBA-TECNICA
-- **Estado**: approved
+- **Estado**: implemented
 - **Backlog**: Portal Corporativo sec 4.E (Infraestructura, Caos y Testing) — contrato `Cloud & Docker` + `Caos y Carga`
 - **Autor**: architect
 - **Fecha**: 2026-08-29
