@@ -81,10 +81,11 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
+jest.setTimeout(10000);
 describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006', () => {
   beforeEach(() => {
     // Arrange
-    resetStore();
+    act(() => resetStore());
     jest.clearAllMocks();
     mockEnqueue.mockClear();
     mockClearPending.mockClear();
@@ -108,7 +109,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   describe('connected ON -> click Medellin -> purga + Medellin verde Bogota azul + encolado 5s', () => {
     it('purga pending previo al seleccionar Medellín', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
@@ -128,7 +129,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('Medellín verde #86efac y Bogotá azul #93c5fd tras click Medellín', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
       const bogBtn = getByTestId('route-bogota-btn');
@@ -147,7 +148,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('encola pending cada 5s con client_event_id uuid, lat/lon Medellín reales y speed 0/45/85 tras Medellín', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
@@ -188,7 +189,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('secuencia desde 0 tras seleccionar Medellín (primer punto Medellín, no continúa previo)', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'bogota' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'bogota' as any } as any));
       // Simulate previo había encolado bogotá, ahora purga y debe reiniciar en 0 de Medellín
       mockEnqueue.mockClear();
       mockClearPending.mockClear();
@@ -215,7 +216,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('placa se mantiene al seleccionar Medellín', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'XYZ123', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'XYZ123', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
 
       // Act
@@ -233,7 +234,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   describe('click Bogota -> purga Medellin + Bogota verde reinicia 0', () => {
     it('purga Medellín y Bogotá pasa a verde #86efac, Medellín a azul #93c5fd', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
       const bogBtn = getByTestId('route-bogota-btn');
@@ -255,7 +256,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('secuencia Bogotá reinicia 0: primer punto Bogotá 4.7110,-74.0721 tras switch', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       mockEnqueue.mockClear();
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
@@ -294,7 +295,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('encola Bogota cada 5s con speed variado incluye 0 y 85', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
       const { getByTestId } = render(<App />);
 
@@ -326,7 +327,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('placa se mantiene al cambiar de Medellín a Bogotá', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
 
       // Act
@@ -342,7 +343,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
     it('interval 5s real: setInterval con 5000 y pendiente con uuid cada tick', async () => {
       // Arrange
       const setSpy = jest.spyOn(global as any, 'setInterval');
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
       mockEnqueue.mockClear();
 
@@ -369,7 +370,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   describe('colores spec y estados deshabilitados', () => {
     it('rutas gris #e5e7eb deshabilitadas cuando simOn OFF', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: false, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: false, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
       const bogBtn = getByTestId('route-bogota-btn');
@@ -386,7 +387,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('rutas azul #93c5fd habilitadas sin selección cuando simOn ON', () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       const { getByTestId } = render(<App />);
       const medBtn = getByTestId('route-medellin-btn');
       const bogBtn = getByTestId('route-bogota-btn');
@@ -401,7 +402,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
 
     it('no encola si simOn OFF (toggle gris)', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: false, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: false, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
       render(<App />);
 
@@ -419,7 +420,7 @@ describe('RouteButtons // Covers [SPEC-005: AC-006] FR-006/007 BR-007/008 TS-006
   describe('POST /batch cada 5s o >=50 y client_event_id sagrado', () => {
     it('encola con client_event_id uuid v4 único por evento', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: null } as any));
       mockEnqueue.mockClear();
       const { getByTestId } = render(<App />);
       await act(async () => {

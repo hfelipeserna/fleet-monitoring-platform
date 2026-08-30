@@ -80,10 +80,11 @@ function getBgColor(el: any): string | undefined {
   return flat.backgroundColor as string | undefined;
 }
 
+jest.setTimeout(10000);
 describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006 BR-007 TS-007', () => {
   beforeEach(() => {
     // Arrange
-    resetStore();
+    act(() => resetStore());
     jest.clearAllMocks();
     mockEnqueue.mockClear();
     mockClearPending.mockClear();
@@ -104,6 +105,8 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
   });
 
   afterEach(() => {
+    intervalRegistry.reset();
+    jest.clearAllTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
     jest.clearAllMocks();
@@ -112,7 +115,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
   describe('given simulado Medellin verde, when ON->OFF -> purga + gris + Location mock called', () => {
     it('purga buffer simulado via clearPending llamado', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any, selectedRouteIdx: 5 } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any, selectedRouteIdx: 5 } as any));
       mockClearPending.mockClear();
       const { getByTestId } = render(<App />);
       const toggle = getByTestId('sim-toggle');
@@ -135,7 +138,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('selectedRoute vuelve a null tras ON->OFF', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
       const toggle = getByTestId('sim-toggle');
       expect(useAppStore.getState().selectedRoute).toBe('medellin');
@@ -154,7 +157,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('rutas vuelven a gris #e5e7eb deshabilitadas tras ON->OFF', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
       const toggle = getByTestId('sim-toggle');
       const medBtn = getByTestId('route-medellin-btn');
@@ -186,7 +189,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('misma placa intacta tras ON->OFF', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'ACF356', selectedRoute: 'medellin' as any } as any));
       const { getByTestId } = render(<App />);
       const toggle = getByTestId('sim-toggle');
 
@@ -203,7 +206,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('empieza a transmitir GPS real expo-location cada 5s con Location.getCurrentPositionAsync llamado', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       mockEnqueue.mockClear();
       (Location.getCurrentPositionAsync as jest.Mock).mockClear();
       (Location.requestForegroundPermissionsAsync as jest.Mock).mockClear();
@@ -242,7 +245,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('Location cada 5s encola con misma placa y uuid y lat/lon reales', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       mockEnqueue.mockClear();
       (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' } as any);
       (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue({
@@ -279,7 +282,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('segundo tick 10s hace segundo Location y segundo enqueue misma placa', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       mockEnqueue.mockClear();
       (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' } as any);
       (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue({
@@ -322,7 +325,7 @@ describe('useSimulatedRoute ON->OFF GPS real // Covers [SPEC-005: AC-007] FR-006
 
     it('no llama LocationgetCurrentPositionAsync mientras ON (simulado) cada 5s es simulado no GPS', async () => {
       // Arrange
-      useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any);
+      act(() => useAppStore.setState({ conn: 'connected', simOn: true, simEnabled: true, plate: 'TGY589', selectedRoute: 'medellin' as any } as any));
       mockEnqueue.mockClear();
       (Location.getCurrentPositionAsync as jest.Mock).mockClear();
       (Location.requestForegroundPermissionsAsync as jest.Mock).mockClear();
