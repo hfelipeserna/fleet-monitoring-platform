@@ -210,9 +210,9 @@ cd mobile
 npm install   # o npm ci si existe package-lock
 
 # Opción A — LAN (recomendada, p95 50ms)
-EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start
+EXPO_PUBLIC_API_URL=http://192.168.1.1:8080 npx expo start -c --host lan
 # Opción B — tunnel si LAN falla (ngrok, p95 500ms, enmascara NetInfo)
-# EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start --tunnel
+# EXPO_PUBLIC_API_URL=http://192.168.1.1:8080 npx expo start -c --tunnel
 
 # Verifica bundle sin nativo
 npx expo-doctor
